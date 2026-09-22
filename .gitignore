@@ -1,0 +1,11 @@
+docs/
+AGENTS.md
+CLAUDE.md
+
+__pycache__/
+.venv/
+.pytest_cache/
+
+.DS_Store
+
+/*.jsonl
