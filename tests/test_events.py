@@ -4,7 +4,14 @@ import json
 
 import pytest
 
-from ids.events import Detection, Event, NetworkInfo, ParseError, TransportInfo
+from ids.events import (
+    Detection,
+    Event,
+    NetworkInfo,
+    ParseError,
+    TransportInfo,
+    preview_payload,
+)
 
 
 def _full_event() -> Event:
@@ -113,3 +120,17 @@ def test_to_dict_rejects_a_non_json_value() -> None:
 
     with pytest.raises(TypeError):
         event.to_dict()
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        (b"", ""),
+        (b"GET", "474554"),
+        (bytes(range(64)), bytes(range(64)).hex()),
+        (b"\xaa" * 100, "aa" * 64),
+    ],
+)
+def test_preview_payload_caps_at_64_bytes(payload: bytes, expected: str) -> None:
+    """The preview must hold the first 64 bytes as lowercase hex."""
+    assert preview_payload(payload) == expected

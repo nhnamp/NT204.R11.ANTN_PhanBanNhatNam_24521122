@@ -1,10 +1,17 @@
 """The normalized event contract, and its conversion to JSON-compatible values."""
 
-from dataclasses import dataclass, field, is_dataclass
+from dataclasses import dataclass, field, fields, is_dataclass
 from typing import Literal
 
 AppProtocol = Literal["HTTP", "DNS", "SMTP", "UNKNOWN"]
 Status = Literal["ok", "partial", "unsupported", "malformed"]
+
+PAYLOAD_PREVIEW_BYTES = 64
+
+
+def preview_payload(payload: bytes) -> str:
+    """Keep the event small, and keep enough payload to explain detection."""
+    return payload[:PAYLOAD_PREVIEW_BYTES].hex()
 
 
 @dataclass
@@ -109,7 +116,7 @@ def _jsonable(value: object, path: str) -> object:
         return {str(key): _jsonable(item, f"{path}.{key}") for key, item in value.items()}
     if is_dataclass(value) and not isinstance(value, type):
         return {
-            name: _jsonable(getattr(value, name), f"{path}.{name}")
-            for name in value.__dataclass_fields__
+            item.name: _jsonable(getattr(value, item.name), f"{path}.{item.name}")
+            for item in fields(value)
         }
     raise TypeError(f"{path} holds {type(value).__name__}, which is not JSON-compatible")
