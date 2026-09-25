@@ -1,8 +1,13 @@
 """Parse arguments, then wire a capture source to the pipeline and the writer."""
 
 import argparse
+import sys
+import time
 
+from ids.capture.pcap import PcapSource
 from ids.config import Config
+from ids.output import JsonLinesWriter
+from ids.pipeline import Pipeline
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -47,12 +52,45 @@ def parse_args(argv: list[str] | None = None) -> Config:
 
 
 def run(config: Config) -> int:
-    """Print the parsed configuration. The capture loop replaces this body later."""
-    origin = f"live:{config.interface}" if config.interface else f"pcap:{config.pcap}"
-    print(f"source: {origin}")
-    print(f"output: {config.output}")
-    print(f"unknown: {config.unknown}")
-    print(f"count: {config.count if config.count is not None else 'unlimited'}")
+    if config.interface is not None:
+        print("live capture is not implemented yet", file=sys.stderr)
+        return 1
+    source = PcapSource(config.pcap)
+
+    pipeline = Pipeline(config, source.describe())
+    started = time.monotonic()
+    read = 0
+    written = 0
+    unsupported = 0
+    malformed = 0
+    try:
+        with JsonLinesWriter(config.output) as writer:
+            for packet in source:
+                read += 1
+                event = pipeline.process(packet)
+                if event is not None:
+                    writer.write(event)
+                    written += 1
+                    if event.status == "unsupported":
+                        unsupported += 1
+                    elif event.status == "malformed":
+                        malformed += 1
+                if config.count is not None and read >= config.count:
+                    break
+    except OSError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    elapsed = time.monotonic() - started
+
+    print(
+        f"packets read: {read}",
+        f"events written: {written}",
+        f"unsupported: {unsupported}",
+        f"malformed: {malformed}",
+        f"elapsed: {elapsed:.3f}s",
+        sep="\n",
+        file=sys.stderr,
+    )
     return 0
 
 

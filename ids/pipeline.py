@@ -12,9 +12,9 @@ LINK_TYPES = {
 
 
 class Pipeline:
-    def __init__(self, config: Config) -> None:
+    def __init__(self, config: Config, source: str) -> None:
         self._config = config
-        self._source = f"live:{config.interface}" if config.interface is not None else f"pcap:{config.pcap}"
+        self._source = source
         self._packet_id = 0
 
     def process(self, packet: Any) -> Event | None:

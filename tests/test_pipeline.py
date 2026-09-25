@@ -7,15 +7,25 @@ from ids.config import Config
 from ids.pipeline import Pipeline
 
 
-def _config(interface: str | None = None, pcap: str | None = "basic.pcap") -> Config:
-    return Config(interface=interface, pcap=pcap, output="events.jsonl", unknown="keep", count=None)
+def _config() -> Config:
+    return Config(
+        interface=None,
+        pcap="basic.pcap",
+        output="events.jsonl",
+        unknown="keep",
+        count=None,
+    )
+
+
+def _pipeline() -> Pipeline:
+    return Pipeline(_config(), "pcap:basic.pcap")
 
 
 def test_packet_fills_the_event_envelope() -> None:
     packet = Ether() / IP() / UDP()
     packet.time = 1758441600.5
 
-    event = Pipeline(_config()).process(packet)
+    event = _pipeline().process(packet)
 
     assert event is not None
     assert event.packet_id == 1
@@ -30,25 +40,14 @@ def test_packet_fills_the_event_envelope() -> None:
 
 
 def test_packet_ids_increment_from_one() -> None:
-    pipeline = Pipeline(_config())
+    pipeline = _pipeline()
 
     assert [pipeline.process(Ether()).packet_id for _ in range(3)] == [1, 2, 3]
 
 
-@pytest.mark.parametrize(
-    ("config", "expected_source"),
-    [
-        (_config(interface=None, pcap="basic.pcap"), "pcap:basic.pcap"),
-        (_config(interface="en0", pcap=None), "live:en0"),
-    ],
-)
-def test_source_names_the_capture_origin(config: Config, expected_source: str) -> None:
-    assert Pipeline(config).process(Ether()).source == expected_source
-
-
 @pytest.mark.parametrize("packet", [None, object(), "not a packet", 42])
 def test_any_object_becomes_a_malformed_event(packet: object) -> None:
-    event = Pipeline(_config()).process(packet)
+    event = _pipeline().process(packet)
 
     assert event is not None
     assert event.status == "malformed"
@@ -64,7 +63,7 @@ def test_pcap_timestamp_becomes_a_json_float(tmp_path: Path) -> None:
     wrpcap(str(path), [packet])
 
     with PcapReader(str(path)) as reader:
-        event = Pipeline(_config()).process(next(iter(reader)))
+        event = _pipeline().process(next(iter(reader)))
 
     assert event is not None
     assert type(event.timestamp) is float
