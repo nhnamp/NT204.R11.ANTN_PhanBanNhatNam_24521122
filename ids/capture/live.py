@@ -35,7 +35,8 @@ class LiveSource(PacketSource):
                     iface=self._interface,
                     store=False,
                     prn=collect,
-                    count=self._count,
+                    # Scapy reads 0 as unlimited, and None breaks its count check.
+                    count=self._count or 0,
                     stop_filter=lambda _: stop.is_set(),
                 )
             except Scapy_Exception as exc:
