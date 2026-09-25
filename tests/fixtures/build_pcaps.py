@@ -35,15 +35,26 @@ def basic_packets() -> list[Packet]:
     return [tcp, udp, arp]
 
 
-def build_basic(path: Path) -> None:
-    """Write basic.pcap with fixed times, so the file is reproducible."""
-    packets = basic_packets()
+FIXTURES = {
+    "basic.pcap": basic_packets,
+}
+
+
+def write_fixture(path: Path, packets: list[Packet]) -> None:
+    """Write packets with fixed times, so the file is reproducible."""
     for index, packet in enumerate(packets):
         packet.time = BASE_TIME + index * 0.5
     wrpcap(str(path), packets)
 
 
+def build_all() -> None:
+    everything: list[Packet] = []
+    for name, build_packets in FIXTURES.items():
+        write_fixture(FIXTURE_DIR / name, build_packets())
+        everything.extend(build_packets())
+    write_fixture(FIXTURE_DIR / "all.pcap", everything)
+
+
 if __name__ == "__main__":
-    target = FIXTURE_DIR / "basic.pcap"
-    build_basic(target)
-    print(f"wrote {target}")
+    build_all()
+    print(f"wrote {len(FIXTURES) + 1} files to {FIXTURE_DIR}")
