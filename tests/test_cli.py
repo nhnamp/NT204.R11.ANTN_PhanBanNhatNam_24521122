@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from scapy.all import Ether
 
 from ids.cli import parse_args, run
 from ids.config import Config
@@ -51,3 +52,47 @@ def test_run_writes_one_event_per_packet(tmp_path: Path, basic_pcap: Path) -> No
     lines = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
     assert [line["packet_id"] for line in lines] == [1, 2, 3]
     assert [line["source"] for line in lines] == [f"pcap:{basic_pcap}"] * 3
+
+
+def test_permission_error_exits_with_a_sudo_hint(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    def denied(**kwargs: object) -> None:
+        raise PermissionError(1, "Operation not permitted")
+
+    monkeypatch.setattr("ids.capture.live.sniff", denied)
+    config = Config(
+        interface="en0",
+        pcap=None,
+        output=str(tmp_path / "events.jsonl"),
+        unknown="keep",
+        count=None,
+    )
+
+    assert run(config) == 1
+    assert "sudo" in capsys.readouterr().err
+
+
+def test_interrupt_closes_the_file_and_exits_zero(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    class Interrupted:
+        def describe(self) -> str:
+            return "live:lo0"
+
+        def __iter__(self):
+            yield Ether()
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr("ids.cli._build_source", lambda config: Interrupted())
+    output = tmp_path / "events.jsonl"
+    config = Config(
+        interface="lo0",
+        pcap=None,
+        output=str(output),
+        unknown="keep",
+        count=None,
+    )
+
+    assert run(config) == 0
+    assert len(output.read_text(encoding="utf-8").splitlines()) == 1

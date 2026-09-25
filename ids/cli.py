@@ -4,6 +4,8 @@ import argparse
 import sys
 import time
 
+from ids.capture.base import PacketSource
+from ids.capture.live import LiveSource
 from ids.capture.pcap import PcapSource
 from ids.config import Config
 from ids.output import JsonLinesWriter
@@ -52,10 +54,7 @@ def parse_args(argv: list[str] | None = None) -> Config:
 
 
 def run(config: Config) -> int:
-    if config.interface is not None:
-        print("live capture is not implemented yet", file=sys.stderr)
-        return 1
-    source = PcapSource(config.pcap)
+    source = _build_source(config)
 
     pipeline = Pipeline(config, source.describe())
     started = time.monotonic()
@@ -77,7 +76,16 @@ def run(config: Config) -> int:
                         malformed += 1
                 if config.count is not None and read >= config.count:
                     break
+    except KeyboardInterrupt:
+        print("interrupted", file=sys.stderr)
+    except PermissionError as exc:
+        print(f"live capture needs root: rerun with sudo ({exc})", file=sys.stderr)
+        return 1
     except OSError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    except ValueError as exc:
+        # Scapy reports an unknown interface name as a ValueError.
         print(f"error: {exc}", file=sys.stderr)
         return 1
     elapsed = time.monotonic() - started
@@ -92,6 +100,12 @@ def run(config: Config) -> int:
         file=sys.stderr,
     )
     return 0
+
+
+def _build_source(config: Config) -> PacketSource:
+    if config.interface is not None:
+        return LiveSource(config.interface, config.count)
+    return PcapSource(config.pcap)
 
 
 def _positive_int(text: str) -> int:
