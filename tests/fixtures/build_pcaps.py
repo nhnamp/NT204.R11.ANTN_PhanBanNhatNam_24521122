@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from scapy.all import ARP, Ether, IP, TCP, UDP, Packet, wrpcap
+from scapy.all import ARP, Ether, IP, Raw, TCP, UDP, Packet, wrpcap
 
 FIXTURE_DIR = Path(__file__).parent
 BASE_TIME = 1758441600.0
@@ -35,8 +35,36 @@ def basic_packets() -> list[Packet]:
     return [tcp, udp, arp]
 
 
+def tcp_handshake_packets() -> list[Packet]:
+    """Build the three frames of a handshake, client 40000 to server 80."""
+    client = Ether(src=CLIENT_MAC, dst=SERVER_MAC) / IP(
+        src="10.0.0.1", dst="10.0.0.2", proto=6
+    )
+    server = Ether(src=SERVER_MAC, dst=CLIENT_MAC) / IP(
+        src="10.0.0.2", dst="10.0.0.1", proto=6
+    )
+    return [
+        client / TCP(sport=40000, dport=80, flags="S", seq=1000),
+        server / TCP(sport=80, dport=40000, flags="SA", seq=5000, ack=1001),
+        client / TCP(sport=40000, dport=80, flags="A", seq=1001, ack=5001),
+    ]
+
+
+def tcp_data_packets() -> list[Packet]:
+    """Build one PSH/ACK frame that carries 20 payload bytes."""
+    frame = (
+        Ether(src=CLIENT_MAC, dst=SERVER_MAC)
+        / IP(src="10.0.0.1", dst="10.0.0.2", proto=6)
+        / TCP(sport=40000, dport=80, flags="PA", seq=1001, ack=5001)
+        / Raw(b"0123456789abcdefghij")
+    )
+    return [frame]
+
+
 FIXTURES = {
     "basic.pcap": basic_packets,
+    "tcp_handshake.pcap": tcp_handshake_packets,
+    "tcp_data.pcap": tcp_data_packets,
 }
 
 

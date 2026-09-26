@@ -2,8 +2,9 @@ from datetime import datetime, timezone
 from typing import Any
 
 from ids.config import Config
-from ids.events import Event, ParseError, Status
+from ids.events import Event, ParseError, Status, preview_payload
 from ids.parsers.network import parse_ipv4
+from ids.parsers.transport import parse_transport
 
 LINK_TYPES = {
     "Ether": "Ethernet",
@@ -26,8 +27,8 @@ class Pipeline:
         # The guard is deliberately broad: one bad packet must not end the capture loop.
         except Exception as exc:
             return self._malformed_event(self._packet_id, exc)
-        # R3.4: a packet without a supported network layer is unknown. P4 extends this to the transport layer.
-        if self._config.unknown == "drop" and event.network is None:
+        # R3.4, R4.1: drop only an unsupported packet. Fragments and malformed events stay visible.
+        if self._config.unknown == "drop" and event.status == "unsupported":
             return None
         return event
 
@@ -35,13 +36,23 @@ class Pipeline:
         """Fill the event envelope. Parser stages replace the constants later."""
         timestamp = float(packet.time)
         network = parse_ipv4(packet)
+        transport = None
+        payload = b""
         errors: list[ParseError] = []
         status: Status = "unsupported"
-        if network is not None and network.frag_offset > 0:
-            status = "partial"
-            errors.append(
-                ParseError(stage="network", type="fragment", message="non-first fragment")
-            )
+        if network is not None:
+            if network.frag_offset > 0:
+                status = "partial"
+                errors.append(
+                    ParseError(stage="network", type="fragment", message="non-first fragment")
+                )
+            else:
+                transport, payload, transport_errors = parse_transport(packet, network)
+                errors.extend(transport_errors)
+                if transport is None:
+                    status = "malformed" if transport_errors else "unsupported"
+                else:
+                    status = "partial" if transport_errors else "ok"
         return Event(
             packet_id=packet_id,
             timestamp=timestamp,
@@ -50,12 +61,12 @@ class Pipeline:
             length=len(packet),
             link_type=_link_type(packet),
             network=network,
-            transport=None,
+            transport=transport,
             app_protocol="UNKNOWN",
             detection=None,
             application=None,
-            payload_len=0,
-            payload_preview="",
+            payload_len=len(payload),
+            payload_preview=preview_payload(payload),
             status=status,
             errors=errors,
         )

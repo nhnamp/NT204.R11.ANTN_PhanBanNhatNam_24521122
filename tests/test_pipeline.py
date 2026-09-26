@@ -2,7 +2,8 @@ from pathlib import Path
 from typing import Literal
 
 import pytest
-from scapy.all import ARP, Ether, IP, Raw, UDP, PcapReader, wrpcap
+from scapy.all import ARP, ICMP, Ether, IP, Raw, TCP, UDP, PcapReader, wrpcap
+from scapy.packet import Packet
 
 from ids.config import Config
 from ids.pipeline import Pipeline
@@ -70,10 +71,36 @@ def test_non_ipv4_is_kept_as_unknown_by_default() -> None:
     assert event.status == "unsupported"
 
 
-def test_non_ipv4_is_dropped_on_request() -> None:
-    packet = Ether(src="02:00:00:00:00:01", dst="ff:ff:ff:ff:ff:ff") / ARP()
+@pytest.mark.parametrize(
+    "packet",
+    [
+        pytest.param(Ether(src="02:00:00:00:00:01", dst="ff:ff:ff:ff:ff:ff") / ARP(), id="ARP"),
+        pytest.param(
+            Ether(src="02:00:00:00:00:01", dst="02:00:00:00:00:02") / IP() / ICMP(), id="ICMP"
+        ),
+    ],
+)
+def test_unsupported_packet_is_dropped_on_request(packet: Packet) -> None:
+    assert _pipeline("drop").process(Ether(bytes(packet))) is None
 
-    assert _pipeline("drop").process(packet) is None
+
+def test_tcp_payload_reaches_the_event() -> None:
+    body = b"hello"
+    crafted = (
+        Ether(src="02:00:00:00:00:01", dst="02:00:00:00:00:02")
+        / IP(src="10.0.0.1", dst="10.0.0.2", proto=6)
+        / TCP(sport=40000, dport=80, flags="PA")
+        / Raw(body)
+    )
+
+    event = _pipeline().process(Ether(bytes(crafted)))
+
+    assert event is not None
+    assert event.transport is not None
+    assert event.transport.payload_len == len(body)
+    assert event.payload_len == len(body)
+    assert event.payload_preview == body.hex()
+    assert event.status == "ok"
 
 
 def test_packet_ids_increment_from_one() -> None:
