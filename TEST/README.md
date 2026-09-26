@@ -6,6 +6,7 @@ This directory holds the graded evidence for Assignment 01. One test case owns o
 
 | ID | Name | Folder | Command | Result | Commit |
 |---|---|---|---|---|---|
+| TC-01 | TCP handshake | [`TC-01_tcp_handshake`](TC-01_tcp_handshake/) | `python main.py --pcap TEST/TC-01_tcp_handshake/input.pcap --output TEST/TC-01_tcp_handshake/output.jsonl` | PASS | |
 
 Add one row per test case when the case passes. Fill the commit column in a later commit, because a commit cannot hold its own hash.
 

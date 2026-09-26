@@ -1,0 +1,8 @@
+$ python main.py --pcap TEST/TC-01_tcp_handshake/input.pcap --output TEST/TC-01_tcp_handshake/output.jsonl
+packets read: 3
+events written: 3
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.001s
+exit code: 0
