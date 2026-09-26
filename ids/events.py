@@ -36,6 +36,7 @@ class NetworkInfo:
     total_len: int
     identification: int
     flags: list[str]
+    # Bytes. The header field counts 8-byte units, and the parser multiplies it by 8.
     frag_offset: int
     ttl: int
     proto_number: int

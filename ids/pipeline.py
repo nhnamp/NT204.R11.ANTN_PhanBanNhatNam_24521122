@@ -2,7 +2,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from ids.config import Config
-from ids.events import Event, ParseError
+from ids.events import Event, ParseError, Status
+from ids.parsers.network import parse_ipv4
 
 LINK_TYPES = {
     "Ether": "Ethernet",
@@ -29,6 +30,14 @@ class Pipeline:
     def _build_event(self, packet_id: int, packet: Any) -> Event:
         """Fill the event envelope. Parser stages replace the constants later."""
         timestamp = float(packet.time)
+        network = parse_ipv4(packet)
+        errors: list[ParseError] = []
+        status: Status = "unsupported"
+        if network is not None and network.frag_offset > 0:
+            status = "partial"
+            errors.append(
+                ParseError(stage="network", type="fragment", message="non-first fragment")
+            )
         return Event(
             packet_id=packet_id,
             timestamp=timestamp,
@@ -36,15 +45,15 @@ class Pipeline:
             source=self._source,
             length=len(packet),
             link_type=_link_type(packet),
-            network=None,
+            network=network,
             transport=None,
             app_protocol="UNKNOWN",
             detection=None,
             application=None,
             payload_len=0,
             payload_preview="",
-            status="unsupported",
-            errors=[],
+            status=status,
+            errors=errors,
         )
 
     def _malformed_event(self, packet_id: int, exc: Exception) -> Event:

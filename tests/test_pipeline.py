@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import pytest
-from scapy.all import Ether, IP, UDP, PcapReader, wrpcap
+from scapy.all import Ether, IP, Raw, UDP, PcapReader, wrpcap
 
 from ids.config import Config
 from ids.pipeline import Pipeline
@@ -22,7 +22,8 @@ def _pipeline() -> Pipeline:
 
 
 def test_packet_fills_the_event_envelope() -> None:
-    packet = Ether() / IP() / UDP()
+    crafted = Ether(src="02:00:00:00:00:01", dst="02:00:00:00:00:02") / IP() / UDP()
+    packet = Ether(bytes(crafted))
     packet.time = 1758441600.5
 
     event = _pipeline().process(packet)
@@ -34,9 +35,27 @@ def test_packet_fills_the_event_envelope() -> None:
     assert event.source == "pcap:basic.pcap"
     assert event.length == len(packet)
     assert event.link_type == "Ethernet"
+    assert event.network is not None
     assert event.app_protocol == "UNKNOWN"
     assert event.status == "unsupported"
     assert event.errors == []
+
+
+def test_non_first_fragment_is_partial() -> None:
+    crafted = (
+        Ether(src="02:00:00:00:00:01", dst="02:00:00:00:00:02")
+        / IP(src="10.0.0.1", dst="10.0.0.2", flags="MF", frag=185, proto=6)
+        / Raw(b"x" * 20)
+    )
+
+    event = _pipeline().process(Ether(bytes(crafted)))
+
+    assert event is not None
+    assert event.network is not None
+    assert event.network.frag_offset == 1480
+    assert event.transport is None
+    assert event.status == "partial"
+    assert [(error.stage, error.type) for error in event.errors] == [("network", "fragment")]
 
 
 def test_packet_ids_increment_from_one() -> None:
