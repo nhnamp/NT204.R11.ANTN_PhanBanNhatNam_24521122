@@ -22,10 +22,14 @@ class Pipeline:
         """Build one event per packet, and never raise (ERR-1)."""
         self._packet_id += 1
         try:
-            return self._build_event(self._packet_id, packet)
+            event = self._build_event(self._packet_id, packet)
         # The guard is deliberately broad: one bad packet must not end the capture loop.
         except Exception as exc:
             return self._malformed_event(self._packet_id, exc)
+        # R3.4: a packet without a supported network layer is unknown. P4 extends this to the transport layer.
+        if self._config.unknown == "drop" and event.network is None:
+            return None
+        return event
 
     def _build_event(self, packet_id: int, packet: Any) -> Event:
         """Fill the event envelope. Parser stages replace the constants later."""

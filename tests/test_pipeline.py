@@ -1,24 +1,25 @@
 from pathlib import Path
+from typing import Literal
 
 import pytest
-from scapy.all import Ether, IP, Raw, UDP, PcapReader, wrpcap
+from scapy.all import ARP, Ether, IP, Raw, UDP, PcapReader, wrpcap
 
 from ids.config import Config
 from ids.pipeline import Pipeline
 
 
-def _config() -> Config:
+def _config(unknown: Literal["keep", "drop"] = "keep") -> Config:
     return Config(
         interface=None,
         pcap="basic.pcap",
         output="events.jsonl",
-        unknown="keep",
+        unknown=unknown,
         count=None,
     )
 
 
-def _pipeline() -> Pipeline:
-    return Pipeline(_config(), "pcap:basic.pcap")
+def _pipeline(unknown: Literal["keep", "drop"] = "keep") -> Pipeline:
+    return Pipeline(_config(unknown), "pcap:basic.pcap")
 
 
 def test_packet_fills_the_event_envelope() -> None:
@@ -56,6 +57,23 @@ def test_non_first_fragment_is_partial() -> None:
     assert event.transport is None
     assert event.status == "partial"
     assert [(error.stage, error.type) for error in event.errors] == [("network", "fragment")]
+
+
+def test_non_ipv4_is_kept_as_unknown_by_default() -> None:
+    packet = Ether(src="02:00:00:00:00:01", dst="ff:ff:ff:ff:ff:ff") / ARP()
+
+    event = _pipeline().process(packet)
+
+    assert event is not None
+    assert event.network is None
+    assert event.app_protocol == "UNKNOWN"
+    assert event.status == "unsupported"
+
+
+def test_non_ipv4_is_dropped_on_request() -> None:
+    packet = Ether(src="02:00:00:00:00:01", dst="ff:ff:ff:ff:ff:ff") / ARP()
+
+    assert _pipeline("drop").process(packet) is None
 
 
 def test_packet_ids_increment_from_one() -> None:

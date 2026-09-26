@@ -54,6 +54,25 @@ def test_run_writes_one_event_per_packet(tmp_path: Path, basic_pcap: Path) -> No
     assert [line["source"] for line in lines] == [f"pcap:{basic_pcap}"] * 3
 
 
+def test_unknown_drop_removes_non_ipv4_and_counts_it(
+    tmp_path: Path, basic_pcap: Path, capsys: pytest.CaptureFixture
+) -> None:
+    output = tmp_path / "events.jsonl"
+    config = Config(
+        interface=None,
+        pcap=str(basic_pcap),
+        output=str(output),
+        unknown="drop",
+        count=None,
+    )
+
+    assert run(config) == 0
+
+    lines = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+    assert [line["packet_id"] for line in lines] == [1, 2]
+    assert "dropped: 1" in capsys.readouterr().err
+
+
 def test_permission_error_exits_with_a_sudo_hint(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture
 ) -> None:
