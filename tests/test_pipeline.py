@@ -38,8 +38,10 @@ def test_packet_fills_the_event_envelope() -> None:
     assert event.length == len(packet)
     assert event.link_type == "Ethernet"
     assert event.network is not None
+    assert event.transport is not None
+    assert event.transport.protocol == "UDP"
     assert event.app_protocol == "UNKNOWN"
-    assert event.status == "unsupported"
+    assert event.status == "ok"
     assert event.errors == []
 
 

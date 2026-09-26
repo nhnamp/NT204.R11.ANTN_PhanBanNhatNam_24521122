@@ -61,10 +61,22 @@ def tcp_data_packets() -> list[Packet]:
     return [frame]
 
 
+def udp_packets() -> list[Packet]:
+    """Build one datagram that carries 12 payload bytes."""
+    frame = (
+        Ether(src=CLIENT_MAC, dst=SERVER_MAC)
+        / IP(src="10.0.0.1", dst="10.0.0.2", proto=17)
+        / UDP(sport=40000, dport=53)
+        / Raw(b"udp-payload!")
+    )
+    return [frame]
+
+
 FIXTURES = {
     "basic.pcap": basic_packets,
     "tcp_handshake.pcap": tcp_handshake_packets,
     "tcp_data.pcap": tcp_data_packets,
+    "udp.pcap": udp_packets,
 }
 
 

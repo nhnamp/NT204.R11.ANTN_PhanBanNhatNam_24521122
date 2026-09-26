@@ -1,5 +1,6 @@
 import pytest
-from scapy.all import ICMP, Ether, IP, Raw, TCP
+from scapy.all import ICMP, Ether, IP, Raw, TCP, UDP
+from scapy.layers.vxlan import VXLAN
 from scapy.packet import Packet
 
 from ids.events import TransportInfo
@@ -21,6 +22,15 @@ def _tcp(flags: str, payload: bytes = b"") -> Packet:
         Ether(src=CLIENT_MAC, dst=SERVER_MAC)
         / IP(src="10.0.0.1", dst="10.0.0.2", proto=6)
         / TCP(sport=40000, dport=80, flags=flags)
+    )
+    return frame / Raw(payload) if payload else frame
+
+
+def _udp(payload: bytes = b"") -> Packet:
+    frame = (
+        Ether(src=CLIENT_MAC, dst=SERVER_MAC)
+        / IP(src="10.0.0.1", dst="10.0.0.2", proto=17)
+        / UDP(sport=40000, dport=53)
     )
     return frame / Raw(payload) if payload else frame
 
@@ -131,7 +141,56 @@ def test_declared_length_beyond_the_frame_reports_truncation() -> None:
     assert [(error.stage, error.type) for error in errors] == [("transport", "truncated")]
 
 
-def test_non_tcp_packets_have_no_transport_info() -> None:
+def test_udp_fields_are_parsed() -> None:
+    crafted = (
+        Ether(src=CLIENT_MAC, dst=SERVER_MAC)
+        / IP(src="10.0.0.1", dst="10.0.0.2", proto=17)
+        / UDP(sport=40000, dport=53, chksum=0x1234)
+        / Raw(b"udp-payload!")
+    )
+
+    info, payload, errors = _parse(crafted)
+
+    assert (payload, errors) == (b"udp-payload!", [])
+    assert info == TransportInfo(
+        protocol="UDP",
+        src_port=40000,
+        dst_port=53,
+        payload_len=12,
+        length=20,
+        checksum=0x1234,
+    )
+
+
+def test_udp_declared_length_beyond_the_frame_reports_truncation() -> None:
+    raw = bytes(_udp(b"udp-payload!"))
+
+    packet = Ether(raw[: len(raw) - 4])
+    info, payload, errors = parse_transport(packet, parse_ipv4(packet))
+
+    assert info is not None
+    assert len(payload) == 8
+    assert [(error.stage, error.type) for error in errors] == [("transport", "truncated")]
+
+
+def test_other_l4_protocols_have_no_transport_info() -> None:
     crafted = Ether(src=CLIENT_MAC, dst=SERVER_MAC) / IP(proto=1) / ICMP()
 
     assert _parse(crafted) == (None, b"", [])
+
+
+def test_tunnel_reports_the_outer_transport() -> None:
+    crafted = (
+        Ether(src=CLIENT_MAC, dst=SERVER_MAC)
+        / IP(src="10.0.0.1", dst="10.0.0.2")
+        / UDP(sport=50000, dport=4789)
+        / VXLAN(vni=1)
+        / Ether(src=CLIENT_MAC, dst=SERVER_MAC)
+        / IP(src="192.168.0.1", dst="192.168.0.2")
+        / TCP(sport=1234, dport=80)
+    )
+
+    info, _, _ = _parse(crafted)
+
+    assert info is not None
+    assert (info.protocol, info.src_port, info.dst_port) == ("UDP", 50000, 4789)

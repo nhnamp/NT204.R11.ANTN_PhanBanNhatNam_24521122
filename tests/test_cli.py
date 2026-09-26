@@ -69,8 +69,8 @@ def test_unknown_drop_removes_unsupported_packets_and_counts_them(
     assert run(config) == 0
 
     lines = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
-    assert [line["packet_id"] for line in lines] == [1]
-    assert "dropped: 2" in capsys.readouterr().err
+    assert [line["packet_id"] for line in lines] == [1, 2]
+    assert "dropped: 1" in capsys.readouterr().err
 
 
 def test_permission_error_exits_with_a_sudo_hint(

@@ -40,7 +40,7 @@ UDP header (RFC 768), with byte offsets:
    destination port   2   2 bytes    checksum           6   2 bytes
 """
 
-from scapy.layers.inet import TCP
+from scapy.layers.inet import IP, TCP, UDP
 from scapy.packet import Packet
 
 from ids.events import NetworkInfo, ParseError, TransportInfo
@@ -57,20 +57,28 @@ TCP_FLAGS = (
 )
 
 NAMED_OPTIONS = {"MSS", "WScale", "SAckOK", "Timestamp", "NOP"}
-TCP_PROTOCOL = 6
+CUT_HEADERS = {6: "TCP", 17: "UDP"}
 
 
 def parse_transport(
     packet: Packet, network: NetworkInfo
 ) -> tuple[TransportInfo | None, bytes, list[ParseError]]:
-    layer = packet.getlayer(TCP)
-    if layer is None:
-        if network.proto_number == TCP_PROTOCOL:
-            # Scapy turns a TCP header shorter than 20 bytes into Raw, so no TCP layer exists.
-            error = ParseError(stage="transport", type="truncated", message="TCP header is cut")
-            return None, b"", [error]
-        return None, b"", []
-    return _parse_tcp(layer, network)
+    # A tunnel such as VXLAN carries an inner TCP layer, so read only the layer after the outer IP.
+    # The exact type check also rejects TCPerror and UDPerror, which quote a header inside ICMP.
+    layer = packet.getlayer(IP).payload
+    if type(layer) is TCP:
+        return _parse_tcp(layer, network)
+    if type(layer) is UDP:
+        return _parse_udp(layer)
+    if network.proto_number in CUT_HEADERS:
+        # Scapy turns a transport header shorter than its fixed part into Raw.
+        error = ParseError(
+            stage="transport",
+            type="truncated",
+            message=f"{CUT_HEADERS[network.proto_number]} header is cut",
+        )
+        return None, b"", [error]
+    return None, b"", []
 
 
 def _parse_tcp(layer: TCP, network: NetworkInfo) -> tuple[TransportInfo, bytes, list[ParseError]]:
@@ -105,6 +113,30 @@ def _parse_tcp(layer: TCP, network: NetworkInfo) -> tuple[TransportInfo, bytes, 
         urgent_ptr=layer.urgptr,
         options=_options(layer.options),
         handshake=_handshake(flags, len(payload)),
+    )
+    return info, payload, errors
+
+
+def _parse_udp(layer: UDP) -> tuple[TransportInfo, bytes, list[ParseError]]:
+    captured = bytes(layer.payload)
+    declared = max(layer.len - 8, 0)
+    payload = captured[:declared]
+    errors: list[ParseError] = []
+    if declared > len(captured):
+        errors.append(
+            ParseError(
+                stage="transport",
+                type="truncated",
+                message=f"declared {declared} payload bytes, found {len(captured)}",
+            )
+        )
+    info = TransportInfo(
+        protocol="UDP",
+        src_port=layer.sport,
+        dst_port=layer.dport,
+        payload_len=len(payload),
+        length=layer.len,
+        checksum=layer.chksum,
     )
     return info, payload, errors
 
