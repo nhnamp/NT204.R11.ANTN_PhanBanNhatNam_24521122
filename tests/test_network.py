@@ -1,7 +1,7 @@
-"""Tests for the IPv4 network parser."""
+from pathlib import Path
 
 import pytest
-from scapy.all import ARP, Ether, IP, IPv6, Raw, TCP
+from scapy.all import ARP, Ether, IP, IPv6, PcapReader, Raw, TCP
 from scapy.layers.inet import IPOption
 from scapy.packet import Packet
 
@@ -17,23 +17,15 @@ def _dissect(packet: Packet) -> Packet:
     return Ether(bytes(packet))
 
 
-def test_crafted_ipv4_packet_fills_every_field() -> None:
-    crafted = (
-        Ether(src=CLIENT_MAC, dst=SERVER_MAC)
-        / IP(
-            src="10.0.0.1",
-            dst="10.0.0.2",
-            tos=0xB8,
-            id=4660,
-            flags="DF",
-            ttl=64,
-            proto=6,
-            chksum=0x1234,
-        )
-        / TCP(sport=40000, dport=80)
-    )
+def test_first_basic_pcap_packet_fills_every_field(basic_pcap: Path) -> None:
+    """Expected values are frame 1 of basic.pcap, as Wireshark shows them.
 
-    assert parse_ipv4(_dissect(crafted)) == NetworkInfo(
+    Wireshark shows the same IPv4 fields: DSCP EF (46), Don't fragment, and checksum 0x2615.
+    """
+    with PcapReader(str(basic_pcap)) as reader:
+        first = next(iter(reader))
+
+    assert parse_ipv4(first) == NetworkInfo(
         protocol="IPv4",
         src_ip="10.0.0.1",
         dst_ip="10.0.0.2",
@@ -41,13 +33,13 @@ def test_crafted_ipv4_packet_fills_every_field() -> None:
         header_len=20,
         dscp=46,
         total_len=40,
-        identification=4660,
+        identification=1,
         flags=["DF"],
         frag_offset=0,
         ttl=64,
         proto_number=6,
         proto_name="TCP",
-        checksum=0x1234,
+        checksum=0x2615,
         has_options=False,
     )
 

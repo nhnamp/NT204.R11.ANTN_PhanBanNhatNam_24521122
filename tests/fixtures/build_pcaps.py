@@ -14,7 +14,7 @@ def basic_packets() -> list[Packet]:
     """Build the three frames of basic.pcap: TCP, UDP, and ARP."""
     tcp = (
         Ether(src=CLIENT_MAC, dst=SERVER_MAC)
-        / IP(src="10.0.0.1", dst="10.0.0.2")
+        / IP(src="10.0.0.1", dst="10.0.0.2", tos=0xB8, flags="DF")
         / TCP(sport=40000, dport=80, flags="S", seq=1000)
     )
     udp = (
