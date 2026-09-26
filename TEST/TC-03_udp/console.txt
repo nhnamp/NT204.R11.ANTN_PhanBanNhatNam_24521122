@@ -1,0 +1,8 @@
+$ python main.py --pcap TEST/TC-03_udp/input.pcap --output TEST/TC-03_udp/output.jsonl
+packets read: 1
+events written: 1
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.001s
+exit code: 0
