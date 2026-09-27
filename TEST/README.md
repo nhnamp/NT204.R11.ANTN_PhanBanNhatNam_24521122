@@ -18,10 +18,10 @@ This directory holds the graded evidence for Assignment 01. One test case owns o
 | TC-10 | SMTP response | [`TC-10_smtp_response`](TC-10_smtp_response/) | `python main.py --pcap TEST/TC-10_smtp_response/input.pcap --output TEST/TC-10_smtp_response/output.jsonl` | PASS | `09ccdfe` |
 | TC-11 | Unknown protocol | [`TC-11_unknown_protocol`](TC-11_unknown_protocol/) | `python main.py --pcap TEST/TC-11_unknown_protocol/input.pcap --output TEST/TC-11_unknown_protocol/output.jsonl --unknown keep`, then the same with `--unknown drop` and `output_drop.jsonl` | PASS | `a80c754` |
 | TC-12 | Malformed packet | [`TC-12_malformed_packet`](TC-12_malformed_packet/) | one run per file in `input/`, with `--unknown keep` into `output/` and with `--unknown drop` into `output_drop/` (see the case README) | PASS | `727478e` |
-| BONUS-01 | HTTP on a non-standard port | [`BONUS-01_http_nonstandard_port`](BONUS-01_http_nonstandard_port/) | one run per file in `input/` into `output/` (see the case README) | PASS | |
-| BONUS-02 | DNS on a non-standard port | [`BONUS-02_dns_nonstandard_port`](BONUS-02_dns_nonstandard_port/) | one run per file in `input/` into `output/` (see the case README) | PASS | |
-| BONUS-03 | SMTP on a non-standard port | [`BONUS-03_smtp_nonstandard_port`](BONUS-03_smtp_nonstandard_port/) | `python main.py --pcap TEST/BONUS-03_smtp_nonstandard_port/input.pcap --output TEST/BONUS-03_smtp_nonstandard_port/output.jsonl` | PASS | |
-| BONUS-04 | Detection traps | [`BONUS-04_detection_traps`](BONUS-04_detection_traps/) | `python main.py --pcap TEST/BONUS-04_detection_traps/input.pcap --output TEST/BONUS-04_detection_traps/output.jsonl` | PASS | |
+| BONUS-01 | HTTP on a non-standard port | [`BONUS-01_http_nonstandard_port`](BONUS-01_http_nonstandard_port/) | one run per file in `input/` into `output/` (see the case README) | PASS | `b31cf90` |
+| BONUS-02 | DNS on a non-standard port | [`BONUS-02_dns_nonstandard_port`](BONUS-02_dns_nonstandard_port/) | one run per file in `input/` into `output/` (see the case README) | PASS | `02cb171` |
+| BONUS-03 | SMTP on a non-standard port | [`BONUS-03_smtp_nonstandard_port`](BONUS-03_smtp_nonstandard_port/) | `python main.py --pcap TEST/BONUS-03_smtp_nonstandard_port/input.pcap --output TEST/BONUS-03_smtp_nonstandard_port/output.jsonl` | PASS | `334e6c5` |
+| BONUS-04 | Detection traps | [`BONUS-04_detection_traps`](BONUS-04_detection_traps/) | `python main.py --pcap TEST/BONUS-04_detection_traps/input.pcap --output TEST/BONUS-04_detection_traps/output.jsonl` | PASS | `c194815` |
 
 Add one row per test case when the case passes. Fill the commit column in a later commit, because a commit cannot hold its own hash. A retest adds its commit after the word "retest". The last hash in a row is the commit of the current evidence.
 
