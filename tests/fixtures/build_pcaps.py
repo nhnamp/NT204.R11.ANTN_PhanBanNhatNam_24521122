@@ -97,17 +97,19 @@ def udp_packets() -> list[Packet]:
     return [frame]
 
 
-def _http_frame(client_to_server: bool, payload: bytes, sequence: int = 1001) -> Packet:
+def _http_frame(
+    client_to_server: bool, payload: bytes, sequence: int = 1001, port: int = 80
+) -> Packet:
     """Build one PSH/ACK segment that carries an HTTP payload."""
     if client_to_server:
         frame = Ether(src=CLIENT_MAC, dst=SERVER_MAC) / IP(
             src="10.0.0.1", dst="10.0.0.2", proto=6
         )
-        return frame / TCP(sport=40000, dport=80, flags="PA", seq=sequence) / Raw(payload)
+        return frame / TCP(sport=40000, dport=port, flags="PA", seq=sequence) / Raw(payload)
     frame = Ether(src=SERVER_MAC, dst=CLIENT_MAC) / IP(
         src="10.0.0.2", dst="10.0.0.1", proto=6
     )
-    return frame / TCP(sport=80, dport=40000, flags="PA", seq=sequence) / Raw(payload)
+    return frame / TCP(sport=port, dport=40000, flags="PA", seq=sequence) / Raw(payload)
 
 
 def http_get_packets() -> list[Packet]:
@@ -150,17 +152,17 @@ def http_response_packets() -> list[Packet]:
     return [_http_frame(False, payload)]
 
 
-def _dns_udp_frame(payload: bytes, client_to_server: bool = True) -> Packet:
+def _dns_udp_frame(payload: bytes, client_to_server: bool = True, port: int = 53) -> Packet:
     """Build one datagram that carries a DNS message."""
     if client_to_server:
         frame = Ether(src=CLIENT_MAC, dst=SERVER_MAC) / IP(
             src="10.0.0.1", dst="10.0.0.2", proto=17
         )
-        return frame / UDP(sport=40000, dport=53) / Raw(payload)
+        return frame / UDP(sport=40000, dport=port) / Raw(payload)
     frame = Ether(src=SERVER_MAC, dst=CLIENT_MAC) / IP(
         src="10.0.0.2", dst="10.0.0.1", proto=17
     )
-    return frame / UDP(sport=53, dport=40000) / Raw(payload)
+    return frame / UDP(sport=port, dport=40000) / Raw(payload)
 
 
 def dns_query_packets() -> list[Packet]:
@@ -212,42 +214,46 @@ def dns_tcp_packets() -> list[Packet]:
     return [frame / TCP(sport=40000, dport=53, flags="PA") / Raw(payload)]
 
 
-def _smtp_frame(client_to_server: bool, payload: bytes, sequence: int) -> Packet:
+def _smtp_frame(
+    client_to_server: bool, payload: bytes, sequence: int, port: int = 25
+) -> Packet:
     """Build one PSH/ACK segment that carries an SMTP message."""
     if client_to_server:
         frame = Ether(src=CLIENT_MAC, dst=SERVER_MAC) / IP(
             src="10.0.0.1", dst="10.0.0.2", proto=6
         )
-        return frame / TCP(sport=40000, dport=25, flags="PA", seq=sequence) / Raw(payload)
+        return frame / TCP(sport=40000, dport=port, flags="PA", seq=sequence) / Raw(payload)
     frame = Ether(src=SERVER_MAC, dst=CLIENT_MAC) / IP(
         src="10.0.0.2", dst="10.0.0.1", proto=6
     )
-    return frame / TCP(sport=25, dport=40000, flags="PA", seq=sequence) / Raw(payload)
+    return frame / TCP(sport=port, dport=40000, flags="PA", seq=sequence) / Raw(payload)
+
+
+SMTP_DIALOGUE = [
+    (False, b"220 mail.example.com ESMTP\r\n"),
+    (True, b"EHLO client.example.com\r\n"),
+    (
+        False,
+        b"250-mail.example.com\r\n250-SIZE 10240000\r\n250-STARTTLS\r\n250 HELP\r\n",
+    ),
+    (True, b"MAIL FROM:<alice@example.com>\r\n"),
+    (False, b"250 OK\r\n"),
+    (True, b"RCPT TO:<bob@example.com>\r\n"),
+    (False, b"250 OK\r\n"),
+    (True, b"DATA\r\n"),
+    (False, b"354 End data with <CR><LF>.<CR><LF>\r\n"),
+    (True, b"Hello Bob.\r\n.\r\n"),
+    (False, b"250 Message accepted\r\n"),
+    (True, b"QUIT\r\n"),
+    (False, b"221 Bye\r\n"),
+]
 
 
 def smtp_session_packets() -> list[Packet]:
     """Build the scripted SMTP dialogue of R8.6, one frame per message."""
-    dialogue = [
-        (False, b"220 mail.example.com ESMTP\r\n"),
-        (True, b"EHLO client.example.com\r\n"),
-        (
-            False,
-            b"250-mail.example.com\r\n250-SIZE 10240000\r\n250-STARTTLS\r\n250 HELP\r\n",
-        ),
-        (True, b"MAIL FROM:<alice@example.com>\r\n"),
-        (False, b"250 OK\r\n"),
-        (True, b"RCPT TO:<bob@example.com>\r\n"),
-        (False, b"250 OK\r\n"),
-        (True, b"DATA\r\n"),
-        (False, b"354 End data with <CR><LF>.<CR><LF>\r\n"),
-        (True, b"Hello Bob.\r\n.\r\n"),
-        (False, b"250 Message accepted\r\n"),
-        (True, b"QUIT\r\n"),
-        (False, b"221 Bye\r\n"),
-    ]
     return [
         _smtp_frame(client_to_server, payload, 1001 + index * 100)
-        for index, (client_to_server, payload) in enumerate(dialogue)
+        for index, (client_to_server, payload) in enumerate(SMTP_DIALOGUE)
     ]
 
 
@@ -272,6 +278,89 @@ def unknown_protocol_packets() -> list[Packet]:
     ]
 
 
+HTTP_BONUS_GET = b"GET /bonus HTTP/1.1\r\nHost: example.com\r\n\r\n"
+HTTP_BONUS_RESPONSE = b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello"
+
+
+def bonus_http_8080_packets() -> list[Packet]:
+    """Build a GET on port 8080 and its response."""
+    return [
+        _http_frame(True, HTTP_BONUS_GET, 1001, 8080),
+        _http_frame(False, HTTP_BONUS_RESPONSE, 2001, 8080),
+    ]
+
+
+def bonus_http_3000_packets() -> list[Packet]:
+    """Build a POST on port 3000, which no port hint names."""
+    body = b"user=nt204"
+    payload = (
+        b"POST /bonus HTTP/1.1\r\n"
+        b"Host: example.com\r\n"
+        b"Content-Type: application/x-www-form-urlencoded\r\n"
+        + f"Content-Length: {len(body)}\r\n".encode("ascii")
+        + b"\r\n"
+        + body
+    )
+    return [_http_frame(True, payload, 1001, 3000)]
+
+
+def bonus_dns_1053_packets() -> list[Packet]:
+    """Build a query and its answer on port 1053, which no port hint names."""
+    query = bytes(DNS(id=0x4321, rd=1, qd=DNSQR(qname="example.com", qtype="A")))
+    response = bytes(
+        DNS(
+            id=0x4321,
+            qr=1,
+            rd=1,
+            ra=1,
+            qd=DNSQR(qname="example.com", qtype="A"),
+            an=DNSRR(rrname="example.com", type="A", ttl=300, rdata="93.184.216.34"),
+        )
+    )
+    return [_dns_udp_frame(query, True, 1053), _dns_udp_frame(response, False, 1053)]
+
+
+def bonus_dns_tcp_9053_packets() -> list[Packet]:
+    """Build a DNS query over TCP on port 9053, which no port hint names."""
+    query = bytes(DNS(id=0x4321, rd=1, qd=DNSQR(qname="example.com", qtype="A")))
+    payload = len(query).to_bytes(2, "big") + query
+    frame = Ether(src=CLIENT_MAC, dst=SERVER_MAC) / IP(
+        src="10.0.0.1", dst="10.0.0.2", proto=6
+    )
+    return [frame / TCP(sport=40000, dport=9053, flags="PA", seq=1001) / Raw(payload)]
+
+
+def bonus_smtp_2526_packets() -> list[Packet]:
+    """Build the P8 dialogue on port 2526, which no port hint names (2525 is a hint)."""
+    return [
+        _smtp_frame(client_to_server, payload, 1001 + index * 100, 2526)
+        for index, (client_to_server, payload) in enumerate(SMTP_DIALOGUE)
+    ]
+
+
+def bonus_traps_packets() -> list[Packet]:
+    """Build random bytes on 80, 53, and 25, then an HTTP request on 53."""
+    noise = random.Random(13).randbytes(64)
+    return [
+        Ether(src=CLIENT_MAC, dst=SERVER_MAC)
+        / IP(src="10.0.0.1", dst="10.0.0.2", proto=6)
+        / TCP(sport=40000, dport=80, flags="PA", seq=1001)
+        / Raw(noise),
+        Ether(src=CLIENT_MAC, dst=SERVER_MAC)
+        / IP(src="10.0.0.1", dst="10.0.0.2", proto=17)
+        / UDP(sport=40000, dport=53)
+        / Raw(noise),
+        Ether(src=CLIENT_MAC, dst=SERVER_MAC)
+        / IP(src="10.0.0.1", dst="10.0.0.2", proto=6)
+        / TCP(sport=40000, dport=25, flags="PA", seq=1001)
+        / Raw(noise),
+        Ether(src=CLIENT_MAC, dst=SERVER_MAC)
+        / IP(src="10.0.0.1", dst="10.0.0.2", proto=6)
+        / TCP(sport=40000, dport=53, flags="PA", seq=1001)
+        / Raw(b"GET / HTTP/1.1\r\nHost: example.com\r\n\r\n"),
+    ]
+
+
 FIXTURES = {
     "basic.pcap": basic_packets,
     "tcp_handshake.pcap": tcp_handshake_packets,
@@ -286,6 +375,12 @@ FIXTURES = {
     "dns_tcp.pcap": dns_tcp_packets,
     "smtp_session.pcap": smtp_session_packets,
     "unknown_protocols.pcap": unknown_protocol_packets,
+    "bonus_http_8080.pcap": bonus_http_8080_packets,
+    "bonus_http_3000.pcap": bonus_http_3000_packets,
+    "bonus_dns_1053.pcap": bonus_dns_1053_packets,
+    "bonus_dns_tcp_9053.pcap": bonus_dns_tcp_9053_packets,
+    "bonus_smtp_2526.pcap": bonus_smtp_2526_packets,
+    "bonus_traps.pcap": bonus_traps_packets,
 }
 
 
