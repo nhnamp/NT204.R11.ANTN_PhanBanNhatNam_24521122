@@ -1,5 +1,6 @@
 """Tests that the R9.2 bad-input corpus never escapes an exception."""
 
+import time
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ from ids.events import Event
 from ids.pipeline import Pipeline
 
 MALFORMED_DIR = Path(__file__).parent / "fixtures" / "malformed"
+TIME_BUDGET = 1.0
 CORPUS = sorted(MALFORMED_DIR.glob("*.pcap"))
 STATUSES = {"ok", "partial", "unsupported", "malformed"}
 
@@ -52,3 +54,16 @@ def test_the_drop_policy_only_removes_unsupported_events() -> None:
                 assert result.packet_id == event.packet_id
             else:
                 assert result is None
+
+
+def test_every_corpus_packet_stays_within_the_time_budget() -> None:
+    """The parser limits keep one crafted packet under a second (R9.4)."""
+    config = Config(
+        interface=None, pcap="corpus", output="events.jsonl", unknown="keep", count=None
+    )
+    for path in CORPUS:
+        pipeline = Pipeline(config, f"pcap:{path}")
+        for packet in PcapSource(path):
+            started = time.monotonic()
+            pipeline.process(packet)
+            assert time.monotonic() - started < TIME_BUDGET

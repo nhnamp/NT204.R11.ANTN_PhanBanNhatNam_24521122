@@ -63,9 +63,8 @@ def run(config: Config) -> int:
     started = time.monotonic()
     read = 0
     written = 0
-    unsupported = 0
-    malformed = 0
     dropped = 0
+    counts = dict.fromkeys(("ok", "partial", "unsupported", "malformed"), 0)
     try:
         with JsonLinesWriter(config.output) as writer:
             for packet in source:
@@ -74,10 +73,7 @@ def run(config: Config) -> int:
                 if event is not None:
                     writer.write(event)
                     written += 1
-                    if event.status == "unsupported":
-                        unsupported += 1
-                    elif event.status == "malformed":
-                        malformed += 1
+                    counts[event.status] += 1
                 else:
                     dropped += 1
                 if config.count is not None and read >= config.count:
@@ -99,8 +95,7 @@ def run(config: Config) -> int:
     print(
         f"packets read: {read}",
         f"events written: {written}",
-        f"unsupported: {unsupported}",
-        f"malformed: {malformed}",
+        *[f"{status}: {count}" for status, count in counts.items()],
         f"dropped: {dropped}",
         f"elapsed: {elapsed:.3f}s",
         sep="\n",

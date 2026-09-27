@@ -23,6 +23,10 @@ Add one row per test case when the case passes. Fill the commit column in a late
 
 Use the test case ID and a short name: `TC-01_tcp_handshake`, `TC-12_malformed_packet`, `BONUS-01_http_port_8080`.
 
+## Console summary format
+
+`console.txt` shows the summary format of the phase that produced it. From P9 on, the summary counts every status: `ok`, `partial`, `unsupported`, and `malformed`. An earlier `console.txt` shows fewer lines. The comparison in R11.3 checks `output.jsonl` only.
+
 ## Folder contents
 
 | File | Content |

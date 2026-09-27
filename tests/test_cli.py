@@ -115,3 +115,25 @@ def test_interrupt_closes_the_file_and_exits_zero(
 
     assert run(config) == 0
     assert len(output.read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_the_summary_counts_every_status(
+    tmp_path: Path, basic_pcap: Path, capsys: pytest.CaptureFixture
+) -> None:
+    output = tmp_path / "events.jsonl"
+    config = Config(
+        interface=None,
+        pcap=str(basic_pcap),
+        output=str(output),
+        unknown="keep",
+        count=None,
+    )
+
+    assert run(config) == 0
+
+    summary = capsys.readouterr().err
+    assert "ok: 2" in summary
+    assert "unsupported: 1" in summary
+    assert "partial: 0" in summary
+    assert "malformed: 0" in summary
+    assert "dropped: 0" in summary
