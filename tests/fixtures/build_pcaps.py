@@ -251,6 +251,27 @@ def smtp_session_packets() -> list[Packet]:
     ]
 
 
+def unknown_protocol_packets() -> list[Packet]:
+    """Build one packet per unsupported case of TC-11, in a fixed order."""
+    inner = IP(src="10.0.0.3", dst="10.0.0.4") / TCP(sport=40000, dport=80, flags="S")
+    return [
+        Ether(src=CLIENT_MAC, dst=SERVER_MAC)
+        / IPv6(src="2001:db8::1", dst="2001:db8::2")
+        / TCP(sport=40000, dport=80, flags="S"),
+        Ether(src=CLIENT_MAC, dst="ff:ff:ff:ff:ff:ff")
+        / ARP(hwsrc=CLIENT_MAC, psrc="10.0.0.1", hwdst="00:00:00:00:00:00", pdst="10.0.0.2"),
+        Ether(src=CLIENT_MAC, dst=SERVER_MAC)
+        / IP(src="10.0.0.1", dst="10.0.0.2")
+        / ICMP(type=8, id=1, seq=1)
+        / Raw(b"ping"),
+        Ether(src=CLIENT_MAC, dst=SERVER_MAC) / IP(src="10.0.0.1", dst="10.0.0.2") / GRE() / inner,
+        Ether(src=CLIENT_MAC, dst=SERVER_MAC)
+        / IP(src="10.0.0.1", dst="10.0.0.2")
+        / TCP(sport=40000, dport=4444, flags="PA", seq=1001)
+        / Raw(random.Random(11).randbytes(64)),
+    ]
+
+
 FIXTURES = {
     "basic.pcap": basic_packets,
     "tcp_handshake.pcap": tcp_handshake_packets,
@@ -264,6 +285,7 @@ FIXTURES = {
     "dns_cname.pcap": dns_cname_packets,
     "dns_tcp.pcap": dns_tcp_packets,
     "smtp_session.pcap": smtp_session_packets,
+    "unknown_protocols.pcap": unknown_protocol_packets,
 }
 
 

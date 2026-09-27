@@ -1,0 +1,22 @@
+$ python main.py --pcap TEST/TC-11_unknown_protocol/input.pcap --output TEST/TC-11_unknown_protocol/output.jsonl --unknown keep
+packets read: 5
+events written: 5
+ok: 1
+partial: 0
+unsupported: 4
+malformed: 0
+dropped: 0
+elapsed: 0.001s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-11_unknown_protocol/input.pcap --output TEST/TC-11_unknown_protocol/output_drop.jsonl --unknown drop
+packets read: 5
+events written: 1
+ok: 1
+partial: 0
+unsupported: 0
+malformed: 0
+dropped: 4
+elapsed: 0.001s
+exit code: 0
+
