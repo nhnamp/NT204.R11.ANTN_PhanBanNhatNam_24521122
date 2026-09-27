@@ -1,0 +1,8 @@
+$ python main.py --pcap TEST/TC-10_smtp_response/input.pcap --output TEST/TC-10_smtp_response/output.jsonl
+packets read: 13
+events written: 13
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.002s
+exit code: 0

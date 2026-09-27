@@ -15,6 +15,7 @@ This directory holds the graded evidence for Assignment 01. One test case owns o
 | TC-07 | DNS query | [`TC-07_dns_query`](TC-07_dns_query/) | `python main.py --pcap TEST/TC-07_dns_query/input.pcap --output TEST/TC-07_dns_query/output.jsonl` | PASS | `bb24e96`, `82a408a` |
 | TC-08 | DNS response | [`TC-08_dns_response`](TC-08_dns_response/) | `python main.py --pcap TEST/TC-08_dns_response/input.pcap --output TEST/TC-08_dns_response/output.jsonl` | PASS | `402d793` |
 | TC-09 | SMTP command | [`TC-09_smtp_command`](TC-09_smtp_command/) | `python main.py --pcap TEST/TC-09_smtp_command/input.pcap --output TEST/TC-09_smtp_command/output.jsonl` | PASS | |
+| TC-10 | SMTP response | [`TC-10_smtp_response`](TC-10_smtp_response/) | `python main.py --pcap TEST/TC-10_smtp_response/input.pcap --output TEST/TC-10_smtp_response/output.jsonl` | PASS | |
 
 Add one row per test case when the case passes. Fill the commit column in a later commit, because a commit cannot hold its own hash. A retest adds its commit after the word "retest". The last hash in a row is the commit of the current evidence.
 
