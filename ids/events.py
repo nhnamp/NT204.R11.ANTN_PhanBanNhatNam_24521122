@@ -144,6 +144,25 @@ class DnsInfo(AppInfo):
 
 
 @dataclass
+class SmtpLine:
+    kind: Literal["command", "response", "data"]
+    text: str
+    command: str | None = None
+    argument: str | None = None
+    code: int | None = None
+    separator: str | None = None
+    message: str | None = None
+
+
+@dataclass
+class SmtpInfo(AppInfo):
+    kind: Literal["command", "response", "data"]
+    lines: list[SmtpLine]
+    multiline: bool
+    partial: bool
+
+
+@dataclass
 class Event:
     """One captured packet after every parser stage."""
 

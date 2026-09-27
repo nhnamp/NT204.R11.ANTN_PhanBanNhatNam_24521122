@@ -6,7 +6,7 @@ from scapy.all import ARP, ICMP, Ether, IP, Raw, TCP, UDP, PcapReader, wrpcap
 from scapy.packet import Packet
 
 from ids.config import Config
-from ids.events import HttpInfo
+from ids.events import HttpInfo, SmtpInfo
 from ids.pipeline import Pipeline
 
 
@@ -202,6 +202,23 @@ def test_a_malformed_dns_answer_keeps_the_lower_layers(answer_name: bytes) -> No
     assert event.network is not None
     assert event.transport is not None
     assert [(error.stage, error.type) for error in event.errors] == [("dns", "malformed")]
+
+
+def test_smtp_response_becomes_the_application() -> None:
+    crafted = (
+        Ether(src="02:00:00:00:00:01", dst="02:00:00:00:00:02")
+        / IP(src="10.0.0.1", dst="10.0.0.2", proto=6)
+        / TCP(sport=25, dport=40000, flags="PA")
+        / Raw(b"250 OK\r\n")
+    )
+
+    event = _pipeline().process(Ether(bytes(crafted)))
+
+    assert event is not None
+    assert isinstance(event.application, SmtpInfo)
+    assert event.application.kind == "response"
+    assert event.application.lines[0].code == 250
+    assert event.status == "ok"
 
 
 def test_packet_ids_increment_from_one() -> None:

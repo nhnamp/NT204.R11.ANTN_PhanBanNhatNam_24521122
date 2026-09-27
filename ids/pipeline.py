@@ -7,6 +7,7 @@ from ids.parsers.detector import detect_app_protocol
 from ids.parsers.dns import parse_dns
 from ids.parsers.http import parse_http
 from ids.parsers.network import parse_ipv4
+from ids.parsers.smtp import parse_smtp
 from ids.parsers.transport import parse_transport
 
 LINK_TYPES = {
@@ -65,6 +66,8 @@ class Pipeline:
                 application, application_errors = parse_http(payload)
             elif detection.protocol == "DNS":
                 application, application_errors = parse_dns(payload, transport)
+            elif detection.protocol == "SMTP":
+                application, application_errors = parse_smtp(payload)
             if application is not None:
                 partial = application.partial
         errors.extend(application_errors)

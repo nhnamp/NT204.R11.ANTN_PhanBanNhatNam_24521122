@@ -187,6 +187,45 @@ def dns_tcp_packets() -> list[Packet]:
     return [frame / TCP(sport=40000, dport=53, flags="PA") / Raw(payload)]
 
 
+def _smtp_frame(client_to_server: bool, payload: bytes, sequence: int) -> Packet:
+    """Build one PSH/ACK segment that carries an SMTP message."""
+    if client_to_server:
+        frame = Ether(src=CLIENT_MAC, dst=SERVER_MAC) / IP(
+            src="10.0.0.1", dst="10.0.0.2", proto=6
+        )
+        return frame / TCP(sport=40000, dport=25, flags="PA", seq=sequence) / Raw(payload)
+    frame = Ether(src=SERVER_MAC, dst=CLIENT_MAC) / IP(
+        src="10.0.0.2", dst="10.0.0.1", proto=6
+    )
+    return frame / TCP(sport=25, dport=40000, flags="PA", seq=sequence) / Raw(payload)
+
+
+def smtp_session_packets() -> list[Packet]:
+    """Build the scripted SMTP dialogue of R8.6, one frame per message."""
+    dialogue = [
+        (False, b"220 mail.example.com ESMTP\r\n"),
+        (True, b"EHLO client.example.com\r\n"),
+        (
+            False,
+            b"250-mail.example.com\r\n250-SIZE 10240000\r\n250-STARTTLS\r\n250 HELP\r\n",
+        ),
+        (True, b"MAIL FROM:<alice@example.com>\r\n"),
+        (False, b"250 OK\r\n"),
+        (True, b"RCPT TO:<bob@example.com>\r\n"),
+        (False, b"250 OK\r\n"),
+        (True, b"DATA\r\n"),
+        (False, b"354 End data with <CR><LF>.<CR><LF>\r\n"),
+        (True, b"Hello Bob.\r\n.\r\n"),
+        (False, b"250 Message accepted\r\n"),
+        (True, b"QUIT\r\n"),
+        (False, b"221 Bye\r\n"),
+    ]
+    return [
+        _smtp_frame(client_to_server, payload, 1001 + index * 100)
+        for index, (client_to_server, payload) in enumerate(dialogue)
+    ]
+
+
 FIXTURES = {
     "basic.pcap": basic_packets,
     "tcp_handshake.pcap": tcp_handshake_packets,
@@ -199,6 +238,7 @@ FIXTURES = {
     "dns_response.pcap": dns_response_packets,
     "dns_cname.pcap": dns_cname_packets,
     "dns_tcp.pcap": dns_tcp_packets,
+    "smtp_session.pcap": smtp_session_packets,
 }
 
 
