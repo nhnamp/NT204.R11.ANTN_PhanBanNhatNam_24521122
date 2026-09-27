@@ -11,6 +11,7 @@ This directory holds the graded evidence for Assignment 01. One test case owns o
 | TC-03 | UDP | [`TC-03_udp`](TC-03_udp/) | `python main.py --pcap TEST/TC-03_udp/input.pcap --output TEST/TC-03_udp/output.jsonl` | PASS | `3e5cca7`, retest `50df02b` |
 | TC-04 | HTTP GET | [`TC-04_http_get`](TC-04_http_get/) | `python main.py --pcap TEST/TC-04_http_get/input.pcap --output TEST/TC-04_http_get/output.jsonl` | PASS | |
 | TC-05 | HTTP POST | [`TC-05_http_post`](TC-05_http_post/) | `python main.py --pcap TEST/TC-05_http_post/input.pcap --output TEST/TC-05_http_post/output.jsonl` | PASS | |
+| TC-06 | HTTP response | [`TC-06_http_response`](TC-06_http_response/) | `python main.py --pcap TEST/TC-06_http_response/input.pcap --output TEST/TC-06_http_response/output.jsonl` | PASS | |
 
 Add one row per test case when the case passes. Fill the commit column in a later commit, because a commit cannot hold its own hash. A retest adds its commit after the word "retest". The last hash in a row is the commit of the current evidence.
 
