@@ -27,20 +27,27 @@ python main.py --pcap TEST/TC-01_tcp_handshake/input.pcap --output TEST/TC-01_tc
 - The run writes 3 events and exits with code 0.
 - `transport.handshake` is `"SYN"`, `"SYN/ACK"`, and `"ACK"`, in this order.
 - Every event has `status="ok"`, `payload_len=0`, and no errors.
+- Every event has `app_protocol="HTTP"` from the port hint only: `detection.method="port"`, `detection.confidence="low"` (R5.5). The payload is empty, so no payload rule can run.
 
 ## Actual result
 
 `output.jsonl` holds 3 events. `console.txt` holds the console summary and the exit code 0.
 
-| `packet_id` | `transport.flags` | `transport.flags_str` | `seq` | `ack` | `transport.handshake` | `status` |
-|---|---|---|---|---|---|---|
-| 1 | `["SYN"]` | `S` | 1000 | 0 | `SYN` | `ok` |
-| 2 | `["SYN", "ACK"]` | `SA` | 5000 | 1001 | `SYN/ACK` | `ok` |
-| 3 | `["ACK"]` | `A` | 1001 | 5001 | `ACK` | `ok` |
+| `packet_id` | `transport.flags` | `transport.flags_str` | `seq` | `ack` | `transport.handshake` | `status` | `app_protocol` | `detection` |
+|---|---|---|---|---|---|---|---|---|
+| 1 | `["SYN"]` | `S` | 1000 | 0 | `SYN` | `ok` | `HTTP` | `port`, `low`, `port_hint` |
+| 2 | `["SYN", "ACK"]` | `SA` | 5000 | 1001 | `SYN/ACK` | `ok` | `HTTP` | `port`, `low`, `port_hint` |
+| 3 | `["ACK"]` | `A` | 1001 | 5001 | `ACK` | `ok` | `HTTP` | `port`, `low`, `port_hint` |
+
+Packet 2 gets the hint from its source port 80, because the detector checks the destination port first and then the source port.
 
 The events hold absolute sequence numbers. Wireshark shows relative numbers by default, so packet 1 shows `Seq=0` there.
 
 Wireshark shows the same three steps: `[SYN]`, `[SYN, ACK]`, and `[ACK]`. Its raw sequence and acknowledgment numbers match the table.
+
+## Retest after the detector (P5, R5.9)
+
+The first run of this case had no Application Protocol Detector, so every event had `app_protocol="UNKNOWN"` and `detection=null`. The retest changes only these two fields in all 3 events. All network and transport fields are the same as in the first run.
 
 ## Verdict
 
