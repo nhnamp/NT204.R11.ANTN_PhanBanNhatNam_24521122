@@ -27,6 +27,7 @@ python main.py --pcap TEST/TC-02_tcp_data/input.pcap --output TEST/TC-02_tcp_dat
 - `payload_preview` is the hex form of the 20 payload bytes.
 - `transport.handshake` is `null`, because the packet carries data.
 - The event has `status="ok"` and no errors.
+- `app_protocol` is `"UNKNOWN"` with `detection.method="none"`. The payload matches no payload rule, and the port hint applies only to an empty payload (R5.5), so port 80 alone does not make the packet HTTP (`DET-1`).
 
 ## Actual result
 
@@ -42,10 +43,16 @@ python main.py --pcap TEST/TC-02_tcp_data/input.pcap --output TEST/TC-02_tcp_dat
 | `payload_preview` | `303132333435363738396162636465666768696a` |
 | `transport.handshake` | `null` |
 | `status`, `errors` | `ok`, `[]` |
+| `app_protocol` | `UNKNOWN` |
+| `detection` | `method="none"`, `confidence="low"`, `rule=""` |
 
 The preview decodes to `0123456789abcdefghij`, the exact payload of the input.
 
 Wireshark shows the same packet: `[PSH, ACK]` with `Len=20`, and a 20-byte Data field equal to the preview. Its raw sequence number, acknowledgment number, and header length match the table.
+
+## Retest after the detector (P5, R5.9)
+
+The first run of this case had no Application Protocol Detector, so the event had `detection=null`. The retest changes only this field. `app_protocol` stays `"UNKNOWN"`, because the payload `0123456789abcdefghij` is not an HTTP message, even on port 80. All network and transport fields are the same as in the first run.
 
 ## Verdict
 
