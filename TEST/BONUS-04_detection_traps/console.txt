@@ -1,0 +1,10 @@
+$ python main.py --pcap TEST/BONUS-04_detection_traps/input.pcap --output TEST/BONUS-04_detection_traps/output.jsonl
+packets read: 4
+events written: 4
+ok: 4
+partial: 0
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.001s
+exit code: 0
