@@ -20,6 +20,7 @@ This directory holds the graded evidence for Assignment 01. One test case owns o
 | TC-12 | Malformed packet | [`TC-12_malformed_packet`](TC-12_malformed_packet/) | one run per file in `input/`, with `--unknown keep` into `output/` and with `--unknown drop` into `output_drop/` (see the case README) | PASS | `727478e` |
 | BONUS-01 | HTTP on a non-standard port | [`BONUS-01_http_nonstandard_port`](BONUS-01_http_nonstandard_port/) | one run per file in `input/` into `output/` (see the case README) | PASS | |
 | BONUS-02 | DNS on a non-standard port | [`BONUS-02_dns_nonstandard_port`](BONUS-02_dns_nonstandard_port/) | one run per file in `input/` into `output/` (see the case README) | PASS | |
+| BONUS-03 | SMTP on a non-standard port | [`BONUS-03_smtp_nonstandard_port`](BONUS-03_smtp_nonstandard_port/) | `python main.py --pcap TEST/BONUS-03_smtp_nonstandard_port/input.pcap --output TEST/BONUS-03_smtp_nonstandard_port/output.jsonl` | PASS | |
 
 Add one row per test case when the case passes. Fill the commit column in a later commit, because a commit cannot hold its own hash. A retest adds its commit after the word "retest". The last hash in a row is the commit of the current evidence.
 
