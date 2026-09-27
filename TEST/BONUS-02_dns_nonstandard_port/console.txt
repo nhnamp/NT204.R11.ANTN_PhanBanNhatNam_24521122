@@ -1,0 +1,22 @@
+$ python main.py --pcap TEST/BONUS-02_dns_nonstandard_port/input/bonus_dns_1053.pcap --output TEST/BONUS-02_dns_nonstandard_port/output/bonus_dns_1053.jsonl
+packets read: 2
+events written: 2
+ok: 2
+partial: 0
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.001s
+exit code: 0
+
+$ python main.py --pcap TEST/BONUS-02_dns_nonstandard_port/input/bonus_dns_tcp_9053.pcap --output TEST/BONUS-02_dns_nonstandard_port/output/bonus_dns_tcp_9053.jsonl
+packets read: 1
+events written: 1
+ok: 1
+partial: 0
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.001s
+exit code: 0
+
