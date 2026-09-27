@@ -1,0 +1,466 @@
+# --unknown keep
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/01_ipv4_ihl3.pcap --output TEST/TC-12_malformed_packet/output/01_ipv4_ihl3.jsonl --unknown keep
+packets read: 1
+events written: 1
+ok: 0
+partial: 0
+unsupported: 0
+malformed: 1
+dropped: 0
+elapsed: 0.001s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/02_ipv4_length_large.pcap --output TEST/TC-12_malformed_packet/output/02_ipv4_length_large.jsonl --unknown keep
+packets read: 1
+events written: 1
+ok: 0
+partial: 1
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.001s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/03_ipv4_length_small.pcap --output TEST/TC-12_malformed_packet/output/03_ipv4_length_small.jsonl --unknown keep
+packets read: 1
+events written: 1
+ok: 0
+partial: 0
+unsupported: 0
+malformed: 1
+dropped: 0
+elapsed: 0.001s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/04_tcp_data_offset2.pcap --output TEST/TC-12_malformed_packet/output/04_tcp_data_offset2.jsonl --unknown keep
+packets read: 1
+events written: 1
+ok: 0
+partial: 0
+unsupported: 0
+malformed: 1
+dropped: 0
+elapsed: 0.001s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/05_tcp_header_cut.pcap --output TEST/TC-12_malformed_packet/output/05_tcp_header_cut.jsonl --unknown keep
+packets read: 1
+events written: 1
+ok: 0
+partial: 0
+unsupported: 0
+malformed: 1
+dropped: 0
+elapsed: 0.001s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/06_udp_length_large.pcap --output TEST/TC-12_malformed_packet/output/06_udp_length_large.jsonl --unknown keep
+packets read: 1
+events written: 1
+ok: 0
+partial: 1
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.001s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/07_udp_length_small.pcap --output TEST/TC-12_malformed_packet/output/07_udp_length_small.jsonl --unknown keep
+packets read: 1
+events written: 1
+ok: 0
+partial: 0
+unsupported: 0
+malformed: 1
+dropped: 0
+elapsed: 0.001s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/08_dns_answer_pointer_loop.pcap --output TEST/TC-12_malformed_packet/output/08_dns_answer_pointer_loop.jsonl --unknown keep
+packets read: 1
+events written: 1
+ok: 0
+partial: 0
+unsupported: 0
+malformed: 1
+dropped: 0
+elapsed: 0.001s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/09_dns_question_count.pcap --output TEST/TC-12_malformed_packet/output/09_dns_question_count.jsonl --unknown keep
+packets read: 1
+events written: 1
+ok: 1
+partial: 0
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.001s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/10_dns_answer_long_label.pcap --output TEST/TC-12_malformed_packet/output/10_dns_answer_long_label.jsonl --unknown keep
+packets read: 1
+events written: 1
+ok: 0
+partial: 0
+unsupported: 0
+malformed: 1
+dropped: 0
+elapsed: 0.001s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/11_http_long_request_line.pcap --output TEST/TC-12_malformed_packet/output/11_http_long_request_line.jsonl --unknown keep
+packets read: 1
+events written: 1
+ok: 0
+partial: 1
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.003s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/12_http_many_headers.pcap --output TEST/TC-12_malformed_packet/output/12_http_many_headers.jsonl --unknown keep
+packets read: 1
+events written: 1
+ok: 0
+partial: 1
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.001s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/13_smtp_many_lines.pcap --output TEST/TC-12_malformed_packet/output/13_smtp_many_lines.jsonl --unknown keep
+packets read: 1
+events written: 1
+ok: 0
+partial: 1
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.005s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/14_random_bytes_on_known_ports.pcap --output TEST/TC-12_malformed_packet/output/14_random_bytes_on_known_ports.jsonl --unknown keep
+packets read: 3
+events written: 3
+ok: 3
+partial: 0
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.004s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/15_invalid_text_bytes.pcap --output TEST/TC-12_malformed_packet/output/15_invalid_text_bytes.jsonl --unknown keep
+packets read: 1
+events written: 1
+ok: 1
+partial: 0
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.003s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/16_empty_frames.pcap --output TEST/TC-12_malformed_packet/output/16_empty_frames.jsonl --unknown keep
+packets read: 2
+events written: 2
+ok: 0
+partial: 0
+unsupported: 2
+malformed: 0
+dropped: 0
+elapsed: 0.003s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/17_unsupported_protocols.pcap --output TEST/TC-12_malformed_packet/output/17_unsupported_protocols.jsonl --unknown keep
+packets read: 4
+events written: 4
+ok: 0
+partial: 0
+unsupported: 4
+malformed: 0
+dropped: 0
+elapsed: 0.001s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/18_cut_final_record.pcap --output TEST/TC-12_malformed_packet/output/18_cut_final_record.jsonl --unknown keep
+packets read: 1
+events written: 1
+ok: 0
+partial: 1
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.003s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/19_not_a_pcap.txt --output TEST/TC-12_malformed_packet/output/19_not_a_pcap.jsonl --unknown keep
+stopped reading TEST/TC-12_malformed_packet/input/19_not_a_pcap.txt: Not a supported capture file
+packets read: 0
+events written: 0
+ok: 0
+partial: 0
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.002s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/20_linux_sll.pcap --output TEST/TC-12_malformed_packet/output/20_linux_sll.jsonl --unknown keep
+packets read: 1
+events written: 1
+ok: 1
+partial: 0
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.003s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/20_null_link.pcap --output TEST/TC-12_malformed_packet/output/20_null_link.jsonl --unknown keep
+packets read: 1
+events written: 1
+ok: 1
+partial: 0
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.003s
+exit code: 0
+
+# --unknown drop
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/01_ipv4_ihl3.pcap --output TEST/TC-12_malformed_packet/output_drop/01_ipv4_ihl3.jsonl --unknown drop
+packets read: 1
+events written: 1
+ok: 0
+partial: 0
+unsupported: 0
+malformed: 1
+dropped: 0
+elapsed: 0.000s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/02_ipv4_length_large.pcap --output TEST/TC-12_malformed_packet/output_drop/02_ipv4_length_large.jsonl --unknown drop
+packets read: 1
+events written: 1
+ok: 0
+partial: 1
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.000s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/03_ipv4_length_small.pcap --output TEST/TC-12_malformed_packet/output_drop/03_ipv4_length_small.jsonl --unknown drop
+packets read: 1
+events written: 1
+ok: 0
+partial: 0
+unsupported: 0
+malformed: 1
+dropped: 0
+elapsed: 0.000s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/04_tcp_data_offset2.pcap --output TEST/TC-12_malformed_packet/output_drop/04_tcp_data_offset2.jsonl --unknown drop
+packets read: 1
+events written: 1
+ok: 0
+partial: 0
+unsupported: 0
+malformed: 1
+dropped: 0
+elapsed: 0.000s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/05_tcp_header_cut.pcap --output TEST/TC-12_malformed_packet/output_drop/05_tcp_header_cut.jsonl --unknown drop
+packets read: 1
+events written: 1
+ok: 0
+partial: 0
+unsupported: 0
+malformed: 1
+dropped: 0
+elapsed: 0.000s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/06_udp_length_large.pcap --output TEST/TC-12_malformed_packet/output_drop/06_udp_length_large.jsonl --unknown drop
+packets read: 1
+events written: 1
+ok: 0
+partial: 1
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.001s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/07_udp_length_small.pcap --output TEST/TC-12_malformed_packet/output_drop/07_udp_length_small.jsonl --unknown drop
+packets read: 1
+events written: 1
+ok: 0
+partial: 0
+unsupported: 0
+malformed: 1
+dropped: 0
+elapsed: 0.000s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/08_dns_answer_pointer_loop.pcap --output TEST/TC-12_malformed_packet/output_drop/08_dns_answer_pointer_loop.jsonl --unknown drop
+packets read: 1
+events written: 1
+ok: 0
+partial: 0
+unsupported: 0
+malformed: 1
+dropped: 0
+elapsed: 0.001s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/09_dns_question_count.pcap --output TEST/TC-12_malformed_packet/output_drop/09_dns_question_count.jsonl --unknown drop
+packets read: 1
+events written: 1
+ok: 1
+partial: 0
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.001s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/10_dns_answer_long_label.pcap --output TEST/TC-12_malformed_packet/output_drop/10_dns_answer_long_label.jsonl --unknown drop
+packets read: 1
+events written: 1
+ok: 0
+partial: 0
+unsupported: 0
+malformed: 1
+dropped: 0
+elapsed: 0.001s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/11_http_long_request_line.pcap --output TEST/TC-12_malformed_packet/output_drop/11_http_long_request_line.jsonl --unknown drop
+packets read: 1
+events written: 1
+ok: 0
+partial: 1
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.001s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/12_http_many_headers.pcap --output TEST/TC-12_malformed_packet/output_drop/12_http_many_headers.jsonl --unknown drop
+packets read: 1
+events written: 1
+ok: 0
+partial: 1
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.001s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/13_smtp_many_lines.pcap --output TEST/TC-12_malformed_packet/output_drop/13_smtp_many_lines.jsonl --unknown drop
+packets read: 1
+events written: 1
+ok: 0
+partial: 1
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.002s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/14_random_bytes_on_known_ports.pcap --output TEST/TC-12_malformed_packet/output_drop/14_random_bytes_on_known_ports.jsonl --unknown drop
+packets read: 3
+events written: 3
+ok: 3
+partial: 0
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.001s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/15_invalid_text_bytes.pcap --output TEST/TC-12_malformed_packet/output_drop/15_invalid_text_bytes.jsonl --unknown drop
+packets read: 1
+events written: 1
+ok: 1
+partial: 0
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.000s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/16_empty_frames.pcap --output TEST/TC-12_malformed_packet/output_drop/16_empty_frames.jsonl --unknown drop
+packets read: 2
+events written: 0
+ok: 0
+partial: 0
+unsupported: 0
+malformed: 0
+dropped: 2
+elapsed: 0.000s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/17_unsupported_protocols.pcap --output TEST/TC-12_malformed_packet/output_drop/17_unsupported_protocols.jsonl --unknown drop
+packets read: 4
+events written: 0
+ok: 0
+partial: 0
+unsupported: 0
+malformed: 0
+dropped: 4
+elapsed: 0.001s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/18_cut_final_record.pcap --output TEST/TC-12_malformed_packet/output_drop/18_cut_final_record.jsonl --unknown drop
+packets read: 1
+events written: 1
+ok: 0
+partial: 1
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.001s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/19_not_a_pcap.txt --output TEST/TC-12_malformed_packet/output_drop/19_not_a_pcap.jsonl --unknown drop
+stopped reading TEST/TC-12_malformed_packet/input/19_not_a_pcap.txt: Not a supported capture file
+packets read: 0
+events written: 0
+ok: 0
+partial: 0
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.000s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/20_linux_sll.pcap --output TEST/TC-12_malformed_packet/output_drop/20_linux_sll.jsonl --unknown drop
+packets read: 1
+events written: 1
+ok: 1
+partial: 0
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.000s
+exit code: 0
+
+$ python main.py --pcap TEST/TC-12_malformed_packet/input/20_null_link.pcap --output TEST/TC-12_malformed_packet/output_drop/20_null_link.jsonl --unknown drop
+packets read: 1
+events written: 1
+ok: 1
+partial: 0
+unsupported: 0
+malformed: 0
+dropped: 0
+elapsed: 0.000s
+exit code: 0
+

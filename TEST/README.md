@@ -17,6 +17,7 @@ This directory holds the graded evidence for Assignment 01. One test case owns o
 | TC-09 | SMTP command | [`TC-09_smtp_command`](TC-09_smtp_command/) | `python main.py --pcap TEST/TC-09_smtp_command/input.pcap --output TEST/TC-09_smtp_command/output.jsonl` | PASS | `ce42d84` |
 | TC-10 | SMTP response | [`TC-10_smtp_response`](TC-10_smtp_response/) | `python main.py --pcap TEST/TC-10_smtp_response/input.pcap --output TEST/TC-10_smtp_response/output.jsonl` | PASS | `09ccdfe` |
 | TC-11 | Unknown protocol | [`TC-11_unknown_protocol`](TC-11_unknown_protocol/) | `python main.py --pcap TEST/TC-11_unknown_protocol/input.pcap --output TEST/TC-11_unknown_protocol/output.jsonl --unknown keep`, then the same with `--unknown drop` and `output_drop.jsonl` | PASS | |
+| TC-12 | Malformed packet | [`TC-12_malformed_packet`](TC-12_malformed_packet/) | one run per file in `input/`, with `--unknown keep` into `output/` and with `--unknown drop` into `output_drop/` (see the case README) | PASS | |
 
 Add one row per test case when the case passes. Fill the commit column in a later commit, because a commit cannot hold its own hash. A retest adds its commit after the word "retest". The last hash in a row is the commit of the current evidence.
 
