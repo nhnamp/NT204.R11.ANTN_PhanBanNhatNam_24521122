@@ -40,7 +40,9 @@ def test_packet_fills_the_event_envelope() -> None:
     assert event.network is not None
     assert event.transport is not None
     assert event.transport.protocol == "UDP"
-    assert event.app_protocol == "UNKNOWN"
+    assert event.app_protocol == "DNS"
+    assert event.detection is not None
+    assert event.detection.method == "port"
     assert event.status == "ok"
     assert event.errors == []
 

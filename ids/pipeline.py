@@ -3,6 +3,7 @@ from typing import Any
 
 from ids.config import Config
 from ids.events import Event, ParseError, Status, preview_payload
+from ids.parsers.detector import detect_app_protocol
 from ids.parsers.network import parse_ipv4
 from ids.parsers.transport import parse_transport
 
@@ -53,6 +54,7 @@ class Pipeline:
                     status = "malformed" if transport_errors else "unsupported"
                 else:
                     status = "partial" if transport_errors else "ok"
+        detection = detect_app_protocol(transport, payload)
         return Event(
             packet_id=packet_id,
             timestamp=timestamp,
@@ -62,8 +64,8 @@ class Pipeline:
             link_type=_link_type(packet),
             network=network,
             transport=transport,
-            app_protocol="UNKNOWN",
-            detection=None,
+            app_protocol=detection.protocol,
+            detection=detection,
             application=None,
             payload_len=len(payload),
             payload_preview=preview_payload(payload),
