@@ -30,24 +30,33 @@ Byte offsets of every parsed field:
 from scapy.layers.inet import IP
 from scapy.packet import Packet
 
-from ids.events import NetworkInfo
+from ids.events import NetworkInfo, ParseError
 
 PROTOCOL_NAMES = {1: "ICMP", 6: "TCP", 17: "UDP"}
 FLAG_NAMES = ("DF", "MF")
 
 
-def parse_ipv4(packet: Packet) -> NetworkInfo | None:
+def parse_ipv4(packet: Packet) -> tuple[NetworkInfo | None, list[ParseError]]:
     layer = packet.getlayer(IP)
     if layer is None:
-        return None
-    return NetworkInfo(
+        return None, []
+    header_len = (layer.ihl or 0) * 4
+    total_len = layer.len or 0
+    errors: list[ParseError] = []
+    # The fixed header is 20 bytes (RFC 791 section 3.1). A bad length keeps the addresses,
+    # because the source of a malformed packet is what an IDS needs most.
+    if header_len < 20:
+        errors.append(_malformed("IPv4 header is shorter than 20 bytes"))
+    elif total_len < header_len:
+        errors.append(_malformed("IPv4 total length is smaller than the header"))
+    info = NetworkInfo(
         protocol="IPv4",
         src_ip=str(layer.src),
         dst_ip=str(layer.dst),
         version=layer.version,
-        header_len=layer.ihl * 4,
+        header_len=header_len,
         dscp=layer.tos >> 2,
-        total_len=layer.len,
+        total_len=total_len,
         identification=layer.id,
         flags=[name for name in FLAG_NAMES if name in layer.flags],
         frag_offset=layer.frag * 8,
@@ -57,3 +66,8 @@ def parse_ipv4(packet: Packet) -> NetworkInfo | None:
         checksum=layer.chksum,
         has_options=bool(layer.options),
     )
+    return info, errors
+
+
+def _malformed(message: str) -> ParseError:
+    return ParseError(stage="network", type="malformed", message=message)

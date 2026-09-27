@@ -1,6 +1,7 @@
 """Parse arguments, then wire a capture source to the pipeline and the writer."""
 
 import argparse
+import logging
 import sys
 import time
 
@@ -54,6 +55,8 @@ def parse_args(argv: list[str] | None = None) -> Config:
 
 
 def run(config: Config) -> int:
+    # Scapy logs its own dissection warnings, such as a DNS pointer loop. The events already report these faults.
+    logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
     source = _build_source(config)
 
     pipeline = Pipeline(config, source.describe())

@@ -67,8 +67,21 @@ def parse_transport(
     # The exact type check also rejects TCPerror and UDPerror, which quote a header inside ICMP.
     layer = packet.getlayer(IP).payload
     if type(layer) is TCP:
+        if layer.dataofs is None:
+            error = ParseError(stage="transport", type="truncated", message="TCP header is cut")
+            return None, b"", [error]
+        if layer.dataofs < 5:
+            error = ParseError(
+                stage="transport", type="malformed", message="TCP data offset is smaller than 5"
+            )
+            return None, b"", [error]
         return _parse_tcp(layer, network)
     if type(layer) is UDP:
+        if layer.len is None or layer.len < 8:
+            error = ParseError(
+                stage="transport", type="malformed", message="UDP length is smaller than 8"
+            )
+            return None, b"", [error]
         return _parse_udp(layer)
     if network.proto_number in CUT_HEADERS:
         # Scapy turns a transport header shorter than its fixed part into Raw.
@@ -85,11 +98,22 @@ def _parse_tcp(layer: TCP, network: NetworkInfo) -> tuple[TransportInfo, bytes, 
     raw_flags = int(layer.flags)
     flags = [name for name, bit in TCP_FLAGS if raw_flags & bit]
     captured = bytes(layer.payload)
-    declared = max(network.total_len - network.header_len - layer.dataofs * 4, 0)
+    segment_len = network.total_len - network.header_len
+    header_len = layer.dataofs * 4
+    declared = max(segment_len - header_len, 0)
     # The IP length excludes Ethernet padding, which pads a short frame up to 60 bytes.
     payload = captured[:declared]
     errors: list[ParseError] = []
-    if declared > len(captured):
+    if header_len > segment_len:
+        # Scapy reads the missing header bytes from whatever follows, so the options are not trustworthy.
+        errors.append(
+            ParseError(
+                stage="transport",
+                type="truncated",
+                message=f"TCP header of {header_len} bytes is longer than the {segment_len}-byte segment",
+            )
+        )
+    elif declared > len(captured):
         errors.append(
             ParseError(
                 stage="transport",

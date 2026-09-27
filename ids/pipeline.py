@@ -2,7 +2,16 @@ from datetime import datetime, timezone
 from typing import Any
 
 from ids.config import Config
-from ids.events import Event, ParseError, Status, preview_payload
+from ids.events import (
+    AppInfo,
+    AppProtocol,
+    Detection,
+    Event,
+    ParseError,
+    Status,
+    TransportInfo,
+    preview_payload,
+)
 from ids.parsers.detector import detect_app_protocol
 from ids.parsers.dns import parse_dns
 from ids.parsers.http import parse_http
@@ -37,44 +46,68 @@ class Pipeline:
         return event
 
     def _build_event(self, packet_id: int, packet: Any) -> Event:
-        """Fill the event envelope. Parser stages replace the constants later."""
+        """Fill the event envelope. Each stage is wrapped, so a failure keeps the layers already parsed (R9.1)."""
         timestamp = float(packet.time)
-        network = parse_ipv4(packet)
-        transport = None
-        payload = b""
         errors: list[ParseError] = []
         status: Status = "unsupported"
-        if network is not None:
+        network = None
+        transport = None
+        payload = b""
+        detection = None
+        application = None
+
+        network_errors: list[ParseError] = []
+        try:
+            network, network_errors = parse_ipv4(packet)
+        except Exception as exc:
+            errors.append(_stage_failure("network", exc))
+            status = "malformed"
+        errors.extend(network_errors)
+        if network_errors:
+            status = "malformed"
+
+        if network is not None and not network_errors:
             if network.frag_offset > 0:
                 status = "partial"
                 errors.append(
                     ParseError(stage="network", type="fragment", message="non-first fragment")
                 )
             else:
-                transport, payload, transport_errors = parse_transport(packet, network)
-                errors.extend(transport_errors)
-                if transport is None:
-                    status = "malformed" if transport_errors else "unsupported"
+                try:
+                    transport, payload, transport_errors = parse_transport(packet, network)
+                except Exception as exc:
+                    errors.append(_stage_failure("transport", exc))
+                    status = "malformed"
                 else:
-                    status = "partial" if transport_errors else "ok"
-        detection = detect_app_protocol(transport, payload)
-        application = None
-        application_errors: list[ParseError] = []
-        partial = False
-        if "payload" in detection.method:
-            if detection.protocol == "HTTP":
-                application, application_errors = parse_http(payload)
-            elif detection.protocol == "DNS":
-                application, application_errors = parse_dns(payload, transport)
-            elif detection.protocol == "SMTP":
-                application, application_errors = parse_smtp(payload)
-            if application is not None:
-                partial = application.partial
-        errors.extend(application_errors)
-        if any(error.type == "malformed" for error in application_errors):
+                    errors.extend(transport_errors)
+                    if transport is None:
+                        status = "malformed" if transport_errors else "unsupported"
+                    else:
+                        status = "partial" if transport_errors else "ok"
+
+        try:
+            detection = detect_app_protocol(transport, payload)
+        except Exception as exc:
+            errors.append(_stage_failure("detector", exc))
             status = "malformed"
-        elif application_errors or partial:
-            status = "partial"
+        if detection is None:
+            detection = Detection(protocol="UNKNOWN", method="none", confidence="low", rule="")
+
+        if "payload" in detection.method:
+            try:
+                application, application_errors = _parse_application(
+                    detection.protocol, payload, transport
+                )
+            except Exception as exc:
+                errors.append(_stage_failure(detection.protocol.lower(), exc))
+                status = "malformed"
+            else:
+                errors.extend(application_errors)
+                if any(error.type == "malformed" for error in application_errors):
+                    status = "malformed"
+                elif application_errors or (application is not None and application.partial):
+                    status = "partial"
+
         return Event(
             packet_id=packet_id,
             timestamp=timestamp,
@@ -112,6 +145,23 @@ class Pipeline:
             status="malformed",
             errors=[ParseError(stage="pipeline", type=type(exc).__name__, message=str(exc))],
         )
+
+
+def _stage_failure(stage: str, exc: Exception) -> ParseError:
+    """Record a stage exception instead of raising, so one bad packet never stops the loop."""
+    return ParseError(stage=stage, type=type(exc).__name__, message=str(exc))
+
+
+def _parse_application(
+    protocol: AppProtocol, payload: bytes, transport: TransportInfo | None
+) -> tuple[AppInfo | None, list[ParseError]]:
+    if protocol == "HTTP":
+        return parse_http(payload)
+    if protocol == "DNS":
+        return parse_dns(payload, transport)
+    if protocol == "SMTP":
+        return parse_smtp(payload)
+    return None, []
 
 
 def _link_type(packet: Any) -> str:

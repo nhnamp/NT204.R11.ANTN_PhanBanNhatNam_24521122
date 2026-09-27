@@ -14,7 +14,7 @@ SERVER_MAC = "02:00:00:00:00:02"
 def _parse(crafted: Packet) -> tuple[TransportInfo | None, bytes, list]:
     """Dissect the frame first, because Scapy fills the header only on build."""
     packet = Ether(bytes(crafted))
-    return parse_transport(packet, parse_ipv4(packet))
+    return parse_transport(packet, parse_ipv4(packet)[0])
 
 
 def _tcp(flags: str, payload: bytes = b"") -> Packet:
@@ -114,7 +114,7 @@ def test_handshake_steps(flags: str, payload: bytes, expected: str | None) -> No
 
 def test_ethernet_padding_is_not_payload() -> None:
     packet = _padded(_tcp("A"))
-    info, payload, errors = parse_transport(packet, parse_ipv4(packet))
+    info, payload, errors = parse_transport(packet, parse_ipv4(packet)[0])
 
     assert info is not None
     assert (payload, errors, info.handshake) == (b"", [], "ACK")
@@ -123,7 +123,7 @@ def test_ethernet_padding_is_not_payload() -> None:
 def test_cut_tcp_header_is_reported() -> None:
     raw = bytes(_tcp("S"))
     packet = Ether(raw[: 14 + 20 + 8])
-    info, payload, errors = parse_transport(packet, parse_ipv4(packet))
+    info, payload, errors = parse_transport(packet, parse_ipv4(packet)[0])
 
     assert (info, payload) == (None, b"")
     assert [(error.stage, error.type) for error in errors] == [("transport", "truncated")]
@@ -134,7 +134,7 @@ def test_declared_length_beyond_the_frame_reports_truncation() -> None:
     raw = bytes(_tcp("PA", body))
 
     packet = Ether(raw[: len(raw) - 10])
-    info, payload, errors = parse_transport(packet, parse_ipv4(packet))
+    info, payload, errors = parse_transport(packet, parse_ipv4(packet)[0])
 
     assert info is not None
     assert len(payload) == len(body) - 10
@@ -166,7 +166,7 @@ def test_udp_declared_length_beyond_the_frame_reports_truncation() -> None:
     raw = bytes(_udp(b"udp-payload!"))
 
     packet = Ether(raw[: len(raw) - 4])
-    info, payload, errors = parse_transport(packet, parse_ipv4(packet))
+    info, payload, errors = parse_transport(packet, parse_ipv4(packet)[0])
 
     assert info is not None
     assert len(payload) == 8
@@ -194,3 +194,37 @@ def test_tunnel_reports_the_outer_transport() -> None:
 
     assert info is not None
     assert (info.protocol, info.src_port, info.dst_port) == ("UDP", 50000, 4789)
+
+
+def test_a_tcp_data_offset_below_five_is_malformed() -> None:
+    raw = bytearray(bytes(_tcp("PA", b"x")))
+    raw[14 + 20 + 12] = 0x20
+
+    packet = Ether(bytes(raw))
+    info, payload, errors = parse_transport(packet, parse_ipv4(packet)[0])
+
+    assert (info, payload) == (None, b"")
+    assert [(error.stage, error.type) for error in errors] == [("transport", "malformed")]
+
+
+def test_a_udp_length_below_eight_is_malformed() -> None:
+    raw = bytearray(bytes(_udp(b"x")))
+    raw[14 + 20 + 4 : 14 + 20 + 6] = (4).to_bytes(2, "big")
+
+    packet = Ether(bytes(raw))
+    info, payload, errors = parse_transport(packet, parse_ipv4(packet)[0])
+
+    assert (info, payload) == (None, b"")
+    assert [(error.stage, error.type) for error in errors] == [("transport", "malformed")]
+
+
+def test_a_tcp_header_longer_than_the_segment_is_truncated() -> None:
+    raw = bytearray(bytes(_tcp("PA", b"GET / HTTP/1.1\r\n\r\n")))
+    raw[14 + 20 + 12] = 0xF0
+
+    packet = Ether(bytes(raw))
+    info, payload, errors = parse_transport(packet, parse_ipv4(packet)[0])
+
+    assert info is not None
+    assert payload == b""
+    assert [(error.stage, error.type) for error in errors] == [("transport", "truncated")]

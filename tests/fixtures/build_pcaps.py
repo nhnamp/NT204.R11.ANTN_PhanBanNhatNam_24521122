@@ -1,13 +1,38 @@
 """Generate the PCAP fixtures that the tests read."""
 
+import random
+import struct
 from pathlib import Path
 
-from scapy.all import ARP, DNS, DNSQR, DNSRR, Ether, IP, Raw, TCP, UDP, Packet, wrpcap
+from scapy.all import (
+    ARP,
+    DNS,
+    DNSQR,
+    DNSRR,
+    GRE,
+    ICMP,
+    IPv6,
+    Ether,
+    IP,
+    Raw,
+    TCP,
+    UDP,
+    Packet,
+    wrpcap,
+)
 
 FIXTURE_DIR = Path(__file__).parent
+MALFORMED_DIR = FIXTURE_DIR / "malformed"
 BASE_TIME = 1758441600.0
 CLIENT_MAC = "02:00:00:00:00:01"
 SERVER_MAC = "02:00:00:00:00:02"
+PCAP_MAGIC = 0xA1B2C3D4
+LINK_ETHERNET = 1
+LINK_NULL = 0
+LINK_LINUX_SLL = 113
+TCP_OFFSET = 34
+UDP_LENGTH_OFFSET = 38
+IP_LENGTH_OFFSET = 16
 
 
 def basic_packets() -> list[Packet]:
@@ -242,6 +267,132 @@ FIXTURES = {
 }
 
 
+DNS_HEADER = b"\x12\x34\x81\x80\x00\x01\x00\x01\x00\x00\x00\x00"
+DNS_QUESTION = b"\x07example\x03com\x00\x00\x01\x00\x01"
+DNS_ANSWER_OFFSET = len(DNS_HEADER) + len(DNS_QUESTION)
+
+
+def _pcap_bytes(frames: list[bytes], link_type: int = LINK_ETHERNET) -> bytes:
+    """Build a PCAP file, because Scapy cannot build a header that breaks its own rules."""
+    data = bytearray(struct.pack("<IHHiIII", PCAP_MAGIC, 2, 4, 0, 0, 65535, link_type))
+    for index, frame in enumerate(frames):
+        data += struct.pack("<IIII", int(BASE_TIME) + index, 0, len(frame), len(frame))
+        data += frame
+    return bytes(data)
+
+
+def _write_pcap(path: Path, frames: list[bytes], link_type: int = LINK_ETHERNET) -> None:
+    """Write raw frames, so a crafted header needs no Scapy packet model."""
+    path.write_bytes(_pcap_bytes(frames, link_type))
+
+
+def _ip_tcp_frame(payload: bytes = b"", dport: int = 80) -> bytes:
+    """Build one valid Ethernet/IPv4/TCP frame, ready for byte surgery."""
+    return bytes(
+        Ether(src=CLIENT_MAC, dst=SERVER_MAC)
+        / IP(src="10.0.0.1", dst="10.0.0.2", proto=6)
+        / TCP(sport=40000, dport=dport, flags="PA", seq=1000)
+        / Raw(payload)
+    )
+
+
+def _ip_udp_frame(payload: bytes = b"", dport: int = 53) -> bytes:
+    """Build one valid Ethernet/IPv4/UDP frame, ready for byte surgery."""
+    return bytes(
+        Ether(src=CLIENT_MAC, dst=SERVER_MAC)
+        / IP(src="10.0.0.1", dst="10.0.0.2", proto=17)
+        / UDP(sport=40000, dport=dport)
+        / Raw(payload)
+    )
+
+
+def _set_ip_length(frame: bytes, value: int) -> bytes:
+    """Patch the IPv4 total length field."""
+    return frame[:IP_LENGTH_OFFSET] + value.to_bytes(2, "big") + frame[IP_LENGTH_OFFSET + 2 :]
+
+
+def _set_udp_length(frame: bytes, value: int) -> bytes:
+    """Patch the UDP length field."""
+    return frame[:UDP_LENGTH_OFFSET] + value.to_bytes(2, "big") + frame[UDP_LENGTH_OFFSET + 2 :]
+
+
+def _dns_response_with_answer_name(name: bytes) -> bytes:
+    """Build a DNS response whose answer name breaks one R7.5 safety rule."""
+    record = name + b"\x00\x01\x00\x01\x00\x00\x01\x2c\x00\x04\x01\x02\x03\x04"
+    return DNS_HEADER + DNS_QUESTION + record
+
+
+def malformed_files() -> dict[str, tuple[list[bytes], int]]:
+    """Build the R9.2 corpus, keyed by file name."""
+    tcp = _ip_tcp_frame(b"x")
+    udp = _ip_udp_frame(b"udp-payload")
+    noise = random.Random(9).randbytes(64)
+    long_line = b"GET /" + b"a" * 20480 + b" HTTP/1.1"
+    many_headers = b"GET / HTTP/1.1\r\n" + b"".join(b"X-%d: v\r\n" % i for i in range(300))
+    tunnel = IP(src="10.0.0.3", dst="10.0.0.4", proto=6) / TCP(sport=40000, dport=80)
+    return {
+        "01_ipv4_ihl3.pcap": ([tcp[:14] + b"\x43" + tcp[15:]], LINK_ETHERNET),
+        "02_ipv4_length_large.pcap": ([_set_ip_length(tcp, len(tcp) + 100)], LINK_ETHERNET),
+        "03_ipv4_length_small.pcap": ([_set_ip_length(tcp, 10)], LINK_ETHERNET),
+        "04_tcp_data_offset2.pcap": ([tcp[:TCP_OFFSET + 12] + b"\x20" + tcp[TCP_OFFSET + 13 :]], LINK_ETHERNET),
+        "05_tcp_header_cut.pcap": ([tcp[: TCP_OFFSET + 8]], LINK_ETHERNET),
+        "06_udp_length_large.pcap": ([_set_udp_length(udp, 60000)], LINK_ETHERNET),
+        "07_udp_length_small.pcap": ([_set_udp_length(udp, 4)], LINK_ETHERNET),
+        "08_dns_answer_pointer_loop.pcap": (
+            [_ip_udp_frame(_dns_response_with_answer_name(b"\x01a\xc0" + bytes([DNS_ANSWER_OFFSET])))],
+            LINK_ETHERNET,
+        ),
+        "09_dns_question_count.pcap": (
+            [_ip_udp_frame(b"\x12\x34\x01\x00" + (65535).to_bytes(2, "big") + b"\x00" * 6)],
+            LINK_ETHERNET,
+        ),
+        "10_dns_answer_long_label.pcap": (
+            # 100 is a label length above 63. A length octet of 192 or more is a pointer instead.
+            [_ip_udp_frame(_dns_response_with_answer_name(bytes([100]) + b"a" * 100))],
+            LINK_ETHERNET,
+        ),
+        "11_http_long_request_line.pcap": ([_ip_tcp_frame(long_line)], LINK_ETHERNET),
+        "12_http_many_headers.pcap": ([_ip_tcp_frame(many_headers)], LINK_ETHERNET),
+        "13_smtp_many_lines.pcap": ([_ip_tcp_frame(b"NOOP\r\n" * 5000, dport=25)], LINK_ETHERNET),
+        "14_random_bytes_on_known_ports.pcap": (
+            [_ip_tcp_frame(noise), _ip_udp_frame(noise), _ip_tcp_frame(noise, dport=25)],
+            LINK_ETHERNET,
+        ),
+        "15_invalid_text_bytes.pcap": ([_ip_tcp_frame(b"\xff\xfe\x80\x81\x00\x01\x02\x03" * 8)], LINK_ETHERNET),
+        "16_empty_frames.pcap": ([b"", b"\x00"], LINK_ETHERNET),
+        "17_unsupported_protocols.pcap": (
+            [
+                bytes(Ether(src=CLIENT_MAC, dst=SERVER_MAC) / IPv6(src="2001:db8::1", dst="2001:db8::2") / TCP()),
+                bytes(
+                    Ether(src=CLIENT_MAC, dst="ff:ff:ff:ff:ff:ff")
+                    / ARP(hwsrc=CLIENT_MAC, psrc="10.0.0.1", hwdst="00:00:00:00:00:00", pdst="10.0.0.2")
+                ),
+                bytes(Ether(src=CLIENT_MAC, dst=SERVER_MAC) / IP(src="10.0.0.1", dst="10.0.0.2", proto=1) / ICMP()),
+                bytes(Ether(src=CLIENT_MAC, dst=SERVER_MAC) / IP(src="10.0.0.1", dst="10.0.0.2", proto=47) / GRE() / tunnel),
+            ],
+            LINK_ETHERNET,
+        ),
+        "20_null_link.pcap": ([struct.pack("<I", 2) + bytes(tunnel)], LINK_NULL),
+        "20_linux_sll.pcap": (
+            [
+                struct.pack(">HHH8sH", 0, 1, 6, b"\x02\x00\x00\x00\x00\x01\x00\x00", 0x0800)
+                + bytes(tunnel)
+            ],
+            LINK_LINUX_SLL,
+        ),
+    }
+
+
+def build_malformed() -> None:
+    """Write the R9.2 corpus, one crafted file per item."""
+    MALFORMED_DIR.mkdir(exist_ok=True)
+    for name, (frames, link_type) in malformed_files().items():
+        _write_pcap(MALFORMED_DIR / name, frames, link_type)
+    cut = _pcap_bytes([_ip_udp_frame(b"udp-payload")])
+    (MALFORMED_DIR / "18_cut_final_record.pcap").write_bytes(cut[:-10])
+    (MALFORMED_DIR / "19_not_a_pcap.txt").write_text("this file is not a capture file\n")
+
+
 def write_fixture(path: Path, packets: list[Packet]) -> None:
     """Write packets with fixed times, so the file is reproducible."""
     for index, packet in enumerate(packets):
@@ -255,8 +406,9 @@ def build_all() -> None:
         write_fixture(FIXTURE_DIR / name, build_packets())
         everything.extend(build_packets())
     write_fixture(FIXTURE_DIR / "all.pcap", everything)
+    build_malformed()
 
 
 if __name__ == "__main__":
     build_all()
-    print(f"wrote {len(FIXTURES) + 1} files to {FIXTURE_DIR}")
+    print(f"wrote {len(FIXTURES) + 1} fixtures and the malformed corpus to {FIXTURE_DIR}")
