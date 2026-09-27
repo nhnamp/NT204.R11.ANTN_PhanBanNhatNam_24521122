@@ -61,6 +61,8 @@ python main.py --pcap TEST/TC-07_dns_query/input.pcap --output TEST/TC-07_dns_qu
 
 `payload_preview` holds the whole 29-byte message, because it is shorter than the 64-byte preview limit. The hex matches the layout in the Input section.
 
+Wireshark shows the same query: `Standard query 0x1234 A example.com`, flags `0x0100` (recursion desired), 1 question and 0 records in the other sections, and the question `example.com`, type A, class IN. Its UDP length is 37, equal to the 8-byte UDP header plus the 29-byte message.
+
 ## Verdict
 
 PASS.
