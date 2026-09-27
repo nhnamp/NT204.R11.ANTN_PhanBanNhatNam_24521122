@@ -103,6 +103,47 @@ class HttpInfo(AppInfo):
 
 
 @dataclass
+class DnsQuestion:
+    """One question section entry (RFC 1035 section 4.1.2)."""
+
+    name: str
+    qtype: int
+    qtype_name: str
+    qclass: int
+
+
+@dataclass
+class DnsAnswer:
+    """One answer record (RFC 1035 section 4.1.3). `class` is a Python keyword, so the field is rclass."""
+
+    name: str
+    type: int
+    type_name: str
+    rclass: int
+    ttl: int
+    rdata: str | dict[str, object] | list[str]
+
+
+@dataclass
+class DnsInfo(AppInfo):
+    """DNS message fields, written by the DNS parser stage."""
+
+    transaction_id: int
+    is_response: bool
+    opcode: int
+    flags: list[str]
+    rcode: int
+    rcode_name: str
+    qdcount: int
+    ancount: int
+    nscount: int
+    arcount: int
+    questions: list[DnsQuestion]
+    answers: list[DnsAnswer]
+    partial: bool
+
+
+@dataclass
 class Event:
     """One captured packet after every parser stage."""
 

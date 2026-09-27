@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from scapy.all import ARP, Ether, IP, Raw, TCP, UDP, Packet, wrpcap
+from scapy.all import ARP, DNS, DNSQR, DNSRR, Ether, IP, Raw, TCP, UDP, Packet, wrpcap
 
 FIXTURE_DIR = Path(__file__).parent
 BASE_TIME = 1758441600.0
@@ -125,6 +125,68 @@ def http_response_packets() -> list[Packet]:
     return [_http_frame(False, payload)]
 
 
+def _dns_udp_frame(payload: bytes, client_to_server: bool = True) -> Packet:
+    """Build one datagram that carries a DNS message."""
+    if client_to_server:
+        frame = Ether(src=CLIENT_MAC, dst=SERVER_MAC) / IP(
+            src="10.0.0.1", dst="10.0.0.2", proto=17
+        )
+        return frame / UDP(sport=40000, dport=53) / Raw(payload)
+    frame = Ether(src=SERVER_MAC, dst=CLIENT_MAC) / IP(
+        src="10.0.0.2", dst="10.0.0.1", proto=17
+    )
+    return frame / UDP(sport=53, dport=40000) / Raw(payload)
+
+
+def dns_query_packets() -> list[Packet]:
+    """Build one A query for example.com."""
+    query = bytes(DNS(id=0x1234, rd=1, qd=DNSQR(qname="example.com", qtype="A")))
+    return [_dns_udp_frame(query)]
+
+
+def dns_response_packets() -> list[Packet]:
+    """Build one response that answers the query with a single A record."""
+    response = bytes(
+        DNS(
+            id=0x1234,
+            qr=1,
+            rd=1,
+            ra=1,
+            qd=DNSQR(qname="example.com", qtype="A"),
+            an=DNSRR(rrname="example.com", type="A", ttl=300, rdata="93.184.216.34"),
+        )
+    )
+    return [_dns_udp_frame(response, client_to_server=False)]
+
+
+def dns_cname_packets() -> list[Packet]:
+    """Build one response with a CNAME and the A record it points to."""
+    response = bytes(
+        DNS(
+            id=0x1234,
+            qr=1,
+            rd=1,
+            ra=1,
+            qd=DNSQR(qname="www.example.com", qtype="A"),
+            an=[
+                DNSRR(rrname="www.example.com", type="CNAME", ttl=300, rdata="example.com"),
+                DNSRR(rrname="example.com", type="A", ttl=300, rdata="93.184.216.34"),
+            ],
+        )
+    )
+    return [_dns_udp_frame(response, client_to_server=False)]
+
+
+def dns_tcp_packets() -> list[Packet]:
+    """Build one A query over TCP with its two-byte length prefix."""
+    query = bytes(DNS(id=0x1234, rd=1, qd=DNSQR(qname="example.com", qtype="A")))
+    payload = len(query).to_bytes(2, "big") + query
+    frame = Ether(src=CLIENT_MAC, dst=SERVER_MAC) / IP(
+        src="10.0.0.1", dst="10.0.0.2", proto=6
+    )
+    return [frame / TCP(sport=40000, dport=53, flags="PA") / Raw(payload)]
+
+
 FIXTURES = {
     "basic.pcap": basic_packets,
     "tcp_handshake.pcap": tcp_handshake_packets,
@@ -133,6 +195,10 @@ FIXTURES = {
     "http_get.pcap": http_get_packets,
     "http_post.pcap": http_post_packets,
     "http_response.pcap": http_response_packets,
+    "dns_query.pcap": dns_query_packets,
+    "dns_response.pcap": dns_response_packets,
+    "dns_cname.pcap": dns_cname_packets,
+    "dns_tcp.pcap": dns_tcp_packets,
 }
 
 

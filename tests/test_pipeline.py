@@ -172,6 +172,38 @@ def test_an_http_limit_is_partial() -> None:
     assert [(error.stage, error.type) for error in event.errors] == [("http", "limit")]
 
 
+QUESTION = b"\x07example\x03com\x00\x00\x01\x00\x01"
+ANSWER_OFFSET = 12 + len(QUESTION)
+LONG_NAME = b"".join(bytes([63]) + b"a" * 63 for _ in range(4)) + b"\x00"
+
+
+@pytest.mark.parametrize(
+    "answer_name",
+    [
+        b"\x01a\xc0" + bytes([ANSWER_OFFSET]),
+        b"\xc0\x20",
+        LONG_NAME,
+        b"\x40" + b"a" * 64,
+    ],
+)
+def test_a_malformed_dns_answer_keeps_the_lower_layers(answer_name: bytes) -> None:
+    dns = b"\x12\x34\x81\x80\x00\x01\x00\x01\x00\x00\x00\x00" + QUESTION + answer_name
+    crafted = (
+        Ether(src="02:00:00:00:00:01", dst="02:00:00:00:00:02")
+        / IP(src="10.0.0.1", dst="10.0.0.2", proto=17)
+        / UDP(sport=40000, dport=53)
+        / Raw(dns)
+    )
+
+    event = _pipeline().process(Ether(bytes(crafted)))
+
+    assert event is not None
+    assert event.status == "malformed"
+    assert event.network is not None
+    assert event.transport is not None
+    assert [(error.stage, error.type) for error in event.errors] == [("dns", "malformed")]
+
+
 def test_packet_ids_increment_from_one() -> None:
     pipeline = _pipeline()
 
