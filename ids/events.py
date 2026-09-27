@@ -83,6 +83,26 @@ class AppInfo:
 
 
 @dataclass
+class HttpInfo(AppInfo):
+    """HTTP/1.x request or response fields, written by the HTTP parser stage."""
+
+    kind: Literal["request", "response"]
+    version: str
+    headers: dict[str, str | list[str]]
+    body_len: int
+    body_preview: str
+    body_complete: bool
+    partial: bool
+    method: str | None = None
+    target: str | None = None
+    host: str | None = None
+    status_code: int | None = None
+    reason: str | None = None
+    content_length: int | None = None
+    content_type: str | None = None
+
+
+@dataclass
 class Event:
     """One captured packet after every parser stage."""
 

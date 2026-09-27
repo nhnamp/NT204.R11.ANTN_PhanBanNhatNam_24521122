@@ -4,6 +4,7 @@ from typing import Any
 from ids.config import Config
 from ids.events import Event, ParseError, Status, preview_payload
 from ids.parsers.detector import detect_app_protocol
+from ids.parsers.http import parse_http
 from ids.parsers.network import parse_ipv4
 from ids.parsers.transport import parse_transport
 
@@ -55,6 +56,12 @@ class Pipeline:
                 else:
                     status = "partial" if transport_errors else "ok"
         detection = detect_app_protocol(transport, payload)
+        application = None
+        if "payload" in detection.method and detection.protocol == "HTTP":
+            application, http_errors = parse_http(payload)
+            errors.extend(http_errors)
+            if application.partial or http_errors:
+                status = "partial"
         return Event(
             packet_id=packet_id,
             timestamp=timestamp,
@@ -66,7 +73,7 @@ class Pipeline:
             transport=transport,
             app_protocol=detection.protocol,
             detection=detection,
-            application=None,
+            application=application,
             payload_len=len(payload),
             payload_preview=preview_payload(payload),
             status=status,

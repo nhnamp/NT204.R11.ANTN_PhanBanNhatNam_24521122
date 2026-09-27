@@ -72,11 +72,67 @@ def udp_packets() -> list[Packet]:
     return [frame]
 
 
+def _http_frame(client_to_server: bool, payload: bytes, sequence: int = 1001) -> Packet:
+    """Build one PSH/ACK segment that carries an HTTP payload."""
+    if client_to_server:
+        frame = Ether(src=CLIENT_MAC, dst=SERVER_MAC) / IP(
+            src="10.0.0.1", dst="10.0.0.2", proto=6
+        )
+        return frame / TCP(sport=40000, dport=80, flags="PA", seq=sequence) / Raw(payload)
+    frame = Ether(src=SERVER_MAC, dst=CLIENT_MAC) / IP(
+        src="10.0.0.2", dst="10.0.0.1", proto=6
+    )
+    return frame / TCP(sport=80, dport=40000, flags="PA", seq=sequence) / Raw(payload)
+
+
+def http_get_packets() -> list[Packet]:
+    """Build one GET request that names a host and a user agent."""
+    payload = (
+        b"GET /index.html HTTP/1.1\r\n"
+        b"Host: example.com\r\n"
+        b"User-Agent: NT204/1.0\r\n"
+        b"Accept: */*\r\n"
+        b"\r\n"
+    )
+    return [_http_frame(True, payload)]
+
+
+def http_post_packets() -> list[Packet]:
+    """Build one POST request with a form body and its content length."""
+    body = b"user=nt204"
+    payload = (
+        b"POST /login HTTP/1.1\r\n"
+        b"Host: example.com\r\n"
+        b"Content-Type: application/x-www-form-urlencoded\r\n"
+        + f"Content-Length: {len(body)}\r\n".encode("ascii")
+        + b"\r\n"
+        + body
+    )
+    return [_http_frame(True, payload)]
+
+
+def http_response_packets() -> list[Packet]:
+    """Build one 200 response with headers and a short body."""
+    body = b"hello"
+    payload = (
+        b"HTTP/1.1 200 OK\r\n"
+        b"Content-Type: text/plain\r\n"
+        b"Server: NT204\r\n"
+        + f"Content-Length: {len(body)}\r\n".encode("ascii")
+        + b"\r\n"
+        + body
+    )
+    return [_http_frame(False, payload)]
+
+
 FIXTURES = {
     "basic.pcap": basic_packets,
     "tcp_handshake.pcap": tcp_handshake_packets,
     "tcp_data.pcap": tcp_data_packets,
     "udp.pcap": udp_packets,
+    "http_get.pcap": http_get_packets,
+    "http_post.pcap": http_post_packets,
+    "http_response.pcap": http_response_packets,
 }
 
 

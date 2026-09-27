@@ -6,6 +6,7 @@ from scapy.all import ARP, ICMP, Ether, IP, Raw, TCP, UDP, PcapReader, wrpcap
 from scapy.packet import Packet
 
 from ids.config import Config
+from ids.events import HttpInfo
 from ids.pipeline import Pipeline
 
 
@@ -105,6 +106,70 @@ def test_tcp_payload_reaches_the_event() -> None:
     assert event.payload_len == len(body)
     assert event.payload_preview == body.hex()
     assert event.status == "ok"
+
+
+def test_http_payload_becomes_the_application() -> None:
+    request = b"GET /index.html HTTP/1.1\r\nHost: example.com\r\n\r\n"
+    crafted = (
+        Ether(src="02:00:00:00:00:01", dst="02:00:00:00:00:02")
+        / IP(src="10.0.0.1", dst="10.0.0.2", proto=6)
+        / TCP(sport=40000, dport=80, flags="PA")
+        / Raw(request)
+    )
+
+    event = _pipeline().process(Ether(bytes(crafted)))
+
+    assert event is not None
+    assert isinstance(event.application, HttpInfo)
+    assert (event.application.kind, event.application.host) == ("request", "example.com")
+    assert event.status == "ok"
+
+
+def test_a_port_only_detection_skips_the_application_parser() -> None:
+    crafted = (
+        Ether(src="02:00:00:00:00:01", dst="02:00:00:00:00:02")
+        / IP(src="10.0.0.1", dst="10.0.0.2", proto=6)
+        / TCP(sport=40000, dport=80, flags="S")
+    )
+
+    event = _pipeline().process(Ether(bytes(crafted)))
+
+    assert event is not None
+    assert event.detection is not None
+    assert event.detection.method == "port"
+    assert event.application is None
+
+
+def test_a_partial_http_message_is_partial() -> None:
+    crafted = (
+        Ether(src="02:00:00:00:00:01", dst="02:00:00:00:00:02")
+        / IP(src="10.0.0.1", dst="10.0.0.2", proto=6)
+        / TCP(sport=40000, dport=80, flags="PA")
+        / Raw(b"GET / HTTP/1.1\r\nHost: example.com")
+    )
+
+    event = _pipeline().process(Ether(bytes(crafted)))
+
+    assert event is not None
+    assert isinstance(event.application, HttpInfo)
+    assert event.application.partial is True
+    assert event.status == "partial"
+
+
+def test_an_http_limit_is_partial() -> None:
+    request = b"GET / HTTP/1.1\r\n" + b"".join(b"X-%d: v\r\n" % index for index in range(200))
+    crafted = (
+        Ether(src="02:00:00:00:00:01", dst="02:00:00:00:00:02")
+        / IP(src="10.0.0.1", dst="10.0.0.2", proto=6)
+        / TCP(sport=40000, dport=80, flags="PA")
+        / Raw(request)
+    )
+
+    event = _pipeline().process(Ether(bytes(crafted)))
+
+    assert event is not None
+    assert event.status == "partial"
+    assert [(error.stage, error.type) for error in event.errors] == [("http", "limit")]
 
 
 def test_packet_ids_increment_from_one() -> None:
