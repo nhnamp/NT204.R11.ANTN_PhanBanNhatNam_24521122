@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+import math
 import sys
 import time
 
@@ -40,6 +41,46 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="stop after N packets",
     )
+    parser.add_argument(
+        "--payload",
+        choices=("preview", "full"),
+        default=Config.payload,
+        help="store the payload in payload_hex (full) or not (preview) (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--payload-limit",
+        metavar="N",
+        type=_positive_int,
+        default=Config.payload_limit,
+        help="largest payload in bytes that is stored and decoded (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--tcp-timeout",
+        metavar="SEC",
+        type=_positive_float,
+        default=Config.tcp_timeout,
+        help="idle timeout of a TCP flow in seconds of packet time (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--udp-timeout",
+        metavar="SEC",
+        type=_positive_float,
+        default=Config.udp_timeout,
+        help="idle timeout of a UDP flow in seconds of packet time (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--max-flows",
+        metavar="N",
+        type=_positive_int,
+        default=Config.max_flows,
+        help="largest number of active flows (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--flows-output",
+        metavar="FILE",
+        default=Config.flows_output,
+        help="write flow records to FILE (default: %(default)s)",
+    )
     return parser
 
 
@@ -51,6 +92,12 @@ def parse_args(argv: list[str] | None = None) -> Config:
         output=args.output,
         unknown=args.unknown,
         count=args.count,
+        payload=args.payload,
+        payload_limit=args.payload_limit,
+        tcp_timeout=args.tcp_timeout,
+        udp_timeout=args.udp_timeout,
+        max_flows=args.max_flows,
+        flows_output=args.flows_output,
     )
 
 
@@ -111,11 +158,22 @@ def _build_source(config: Config) -> PacketSource:
 
 
 def _positive_int(text: str) -> int:
-    """Reject a count below one, because Scapy reads count=0 as unlimited."""
+    """Reject a value below one. For --count this matters, because Scapy reads count=0 as unlimited."""
     try:
         value = int(text)
     except ValueError as exc:
-        raise argparse.ArgumentTypeError("count must be an integer") from exc
+        raise argparse.ArgumentTypeError("must be an integer") from exc
     if value < 1:
-        raise argparse.ArgumentTypeError("count must be at least 1")
+        raise argparse.ArgumentTypeError("must be at least 1")
+    return value
+
+
+def _positive_float(text: str) -> float:
+    """Reject nan and inf too: a comparison with nan is always false, so a flow would never expire."""
+    try:
+        value = float(text)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a number") from exc
+    if not math.isfinite(value) or value <= 0:
+        raise argparse.ArgumentTypeError("must be a finite number above 0")
     return value

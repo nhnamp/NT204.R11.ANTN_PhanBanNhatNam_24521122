@@ -37,6 +37,57 @@ def test_count_below_one_is_rejected() -> None:
         parse_args(["--pcap", "capture.pcap", "--count", "0"])
 
 
+def test_enrichment_options_have_documented_defaults() -> None:
+    config = parse_args(["--pcap", "capture.pcap"])
+
+    assert config.payload == "full"
+    assert config.payload_limit == 4096
+    assert config.tcp_timeout == 120.0
+    assert config.udp_timeout == 30.0
+    assert config.max_flows == 100_000
+    assert config.flows_output == "flows.jsonl"
+
+
+def test_enrichment_options_reach_the_configuration() -> None:
+    config = parse_args(
+        [
+            "--pcap", "capture.pcap",
+            "--payload", "preview",
+            "--payload-limit", "512",
+            "--tcp-timeout", "5.5",
+            "--udp-timeout", "2",
+            "--max-flows", "10",
+            "--flows-output", "flows.out",
+        ]
+    )
+
+    assert config.payload == "preview"
+    assert config.payload_limit == 512
+    assert config.tcp_timeout == 5.5
+    assert config.udp_timeout == 2.0
+    assert config.max_flows == 10
+    assert config.flows_output == "flows.out"
+
+
+@pytest.mark.parametrize(
+    "option",
+    [
+        "--payload-limit=0",
+        "--payload-limit=1.5",
+        "--max-flows=0",
+        "--tcp-timeout=0",
+        "--udp-timeout=-1",
+        "--tcp-timeout=nan",
+        "--udp-timeout=inf",
+    ],
+)
+def test_option_outside_its_range_is_a_usage_error(option: str) -> None:
+    with pytest.raises(SystemExit) as info:
+        parse_args(["--pcap", "capture.pcap", option])
+
+    assert info.value.code == 2
+
+
 def test_run_writes_one_event_per_packet(tmp_path: Path, basic_pcap: Path) -> None:
     output = tmp_path / "events.jsonl"
     config = Config(

@@ -13,3 +13,10 @@ class Config:
     output: str
     unknown: Literal["keep", "drop"]
     count: int | None
+    events: str | None = None
+    payload: Literal["preview", "full"] = "full"
+    payload_limit: int = 4096
+    tcp_timeout: float = 120.0
+    udp_timeout: float = 30.0
+    max_flows: int = 100_000
+    flows_output: str = "flows.jsonl"
