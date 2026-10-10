@@ -124,6 +124,7 @@ class Pipeline:
             payload_preview=preview_payload(payload),
             status=status,
             errors=errors,
+            payload_hex=_payload_hex(payload, self._config),
         )
 
     def _malformed_event(self, packet_id: int, exc: Exception) -> Event:
@@ -162,6 +163,12 @@ def _parse_application(
     if protocol == "SMTP":
         return parse_smtp(payload)
     return None, []
+
+
+def _payload_hex(payload: bytes, config: Config) -> str | None:
+    if config.payload == "preview":
+        return None
+    return payload[: config.payload_limit].hex()
 
 
 def _link_type(packet: Any) -> str:

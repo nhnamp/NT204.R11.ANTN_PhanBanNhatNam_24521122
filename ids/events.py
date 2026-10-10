@@ -181,6 +181,7 @@ class Event:
     payload_preview: str
     status: Status
     errors: list[ParseError]
+    payload_hex: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         """Return JSON-compatible values for the writer."""

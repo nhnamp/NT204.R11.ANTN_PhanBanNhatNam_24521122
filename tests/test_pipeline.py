@@ -6,7 +6,7 @@ from scapy.all import ARP, ICMP, Ether, IP, Raw, TCP, UDP, PcapReader, wrpcap
 from scapy.packet import Packet
 
 from ids.config import Config
-from ids.events import HttpInfo, SmtpInfo
+from ids.events import Event, HttpInfo, SmtpInfo
 from ids.pipeline import Pipeline
 
 
@@ -22,6 +22,56 @@ def _config(unknown: Literal["keep", "drop"] = "keep") -> Config:
 
 def _pipeline(unknown: Literal["keep", "drop"] = "keep") -> Pipeline:
     return Pipeline(_config(unknown), "pcap:basic.pcap")
+
+
+TCP_DATA_PAYLOAD = b"0123456789abcdefghij"
+
+
+def _tcp_data_event(**options: object) -> Event:
+    config = Config(
+        interface=None, pcap="x", output="events.jsonl", unknown="keep", count=None, **options
+    )
+    with PcapReader(str(Path(__file__).parent / "fixtures" / "tcp_data.pcap")) as reader:
+        packet = next(iter(reader))
+    event = Pipeline(config, "pcap:tcp_data.pcap").process(packet)
+    assert event is not None
+    return event
+
+
+@pytest.mark.parametrize(
+    ("options", "expected"),
+    [
+        ({}, TCP_DATA_PAYLOAD.hex()),
+        ({"payload_limit": 8}, TCP_DATA_PAYLOAD[:8].hex()),
+        ({"payload": "preview"}, None),
+    ],
+)
+def test_payload_hex_follows_the_payload_options(options: dict, expected: str | None) -> None:
+    event = _tcp_data_event(**options)
+
+    assert event.payload_hex == expected
+    assert event.payload_len == len(TCP_DATA_PAYLOAD)
+
+
+@pytest.mark.parametrize(("payload", "expected"), [("full", ""), ("preview", None)])
+def test_empty_payload_gives_an_empty_string_only_in_full_mode(
+    payload: Literal["preview", "full"], expected: str | None
+) -> None:
+    syn = Ether(
+        bytes(
+            Ether(src="02:00:00:00:00:01", dst="02:00:00:00:00:02")
+            / IP(src="10.0.0.1", dst="10.0.0.2", proto=6)
+            / TCP(flags="S")
+        )
+    )
+    config = Config(
+        interface=None, pcap="x", output="events.jsonl", unknown="keep", count=None, payload=payload
+    )
+
+    event = Pipeline(config, "pcap:x").process(syn)
+
+    assert event is not None
+    assert event.payload_hex == expected
 
 
 def test_packet_fills_the_event_envelope() -> None:
@@ -235,6 +285,7 @@ def test_any_object_becomes_a_malformed_event(packet: object) -> None:
     assert event.status == "malformed"
     assert len(event.errors) == 1
     assert event.errors[0].stage == "pipeline"
+    assert event.payload_hex is None
 
 
 def test_pcap_timestamp_becomes_a_json_float(tmp_path: Path) -> None:
