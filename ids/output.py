@@ -1,4 +1,4 @@
-"""Write normalized events to a JSON Lines file."""
+"""Write one JSON object per line."""
 
 import json
 from pathlib import Path
@@ -26,9 +26,8 @@ class JsonLinesWriter:
     ) -> None:
         self.close()
 
-    def write(self, event: Event) -> None:
-        self._file.write(json.dumps(event.to_dict(), ensure_ascii=False))
-        self._file.write("\n")
+    def write(self, record: Event | dict) -> None:
+        self._file.write(_encode(record))
         self._unflushed += 1
         if self._unflushed >= self._flush_every:
             self.flush()
@@ -39,3 +38,15 @@ class JsonLinesWriter:
 
     def close(self) -> None:
         self._file.close()
+
+
+def _encode(record: Event | dict) -> str:
+    """Build the whole line first, so a bad record never leaves half a line in the file."""
+    try:
+        data = record.to_dict() if isinstance(record, Event) else record
+        line = json.dumps(data, ensure_ascii=False, allow_nan=False)
+        # A lone surrogate passes json.dumps but fails the UTF-8 file encoding.
+        line.encode("utf-8")
+    except (TypeError, ValueError, RecursionError) as exc:
+        raise ValueError(f"record cannot be written as JSON: {exc}") from exc
+    return line + "\n"

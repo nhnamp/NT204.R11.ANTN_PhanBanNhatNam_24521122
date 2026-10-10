@@ -62,3 +62,45 @@ def test_close_runs_when_the_body_raises(tmp_path: Path) -> None:
     assert len(path.read_text(encoding="utf-8").splitlines()) == 1
     with pytest.raises(ValueError):
         writer.write(_event(2))
+
+
+def test_event_and_its_dict_give_the_same_line(tmp_path: Path) -> None:
+    event = _event(1)
+    from_event = tmp_path / "event.jsonl"
+    from_dict = tmp_path / "dict.jsonl"
+    with JsonLinesWriter(from_event) as writer:
+        writer.write(event)
+    with JsonLinesWriter(from_dict) as writer:
+        writer.write(event.to_dict())
+
+    assert from_event.read_bytes() == from_dict.read_bytes()
+
+
+def _nested_dict(depth: int) -> dict:
+    record: object = 1
+    for _ in range(depth):
+        record = {"a": record}
+    return {"nested": record}
+
+
+BAD_RECORDS = {
+    "nan": {"timestamp": float("nan")},
+    "lone surrogate": {"text": "\ud800"},
+    "bytes": {"payload": b"x"},
+    "deep nesting": _nested_dict(200_000),
+}
+
+
+@pytest.mark.parametrize("record", BAD_RECORDS.values(), ids=BAD_RECORDS.keys())
+def test_bad_record_raises_and_adds_nothing_to_the_file(tmp_path: Path, record: dict) -> None:
+    """The failed record must not reach the file, and must not count toward the flush."""
+    path = tmp_path / "records.jsonl"
+    with JsonLinesWriter(path, flush_every=3) as writer:
+        writer.write({"n": 1})
+        with pytest.raises(ValueError):
+            writer.write(record)
+        writer.write({"n": 2})
+        assert path.read_text(encoding="utf-8") == ""
+
+        writer.write({"n": 3})
+        assert path.read_text(encoding="utf-8").splitlines() == ['{"n": 1}', '{"n": 2}', '{"n": 3}']
