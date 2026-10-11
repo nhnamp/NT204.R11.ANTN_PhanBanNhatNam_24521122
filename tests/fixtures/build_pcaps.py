@@ -361,6 +361,58 @@ def bonus_traps_packets() -> list[Packet]:
     ]
 
 
+def _http_request(method: bytes, target: bytes, body: bytes = b"", content_type: bytes | None = None) -> bytes:
+    """Build an HTTP request, with a content length when it has a body."""
+    headers = b"Host: example.com\r\n"
+    if content_type is not None:
+        headers += b"Content-Type: " + content_type + b"\r\n"
+    if body:
+        headers += f"Content-Length: {len(body)}\r\n".encode("ascii")
+    return method + b" " + target + b" HTTP/1.1\r\n" + headers + b"\r\n" + body
+
+
+def _http_reply(body: bytes, content_type: bytes | None = None) -> bytes:
+    """Build a 200 response, with a content length."""
+    headers = b""
+    if content_type is not None:
+        headers += b"Content-Type: " + content_type + b"\r\n"
+    return b"HTTP/1.1 200 OK\r\n" + headers + f"Content-Length: {len(body)}\r\n".encode("ascii") + b"\r\n" + body
+
+
+def http_percent_packets() -> list[Packet]:
+    """Build the requests of T01: percent encoding, a plus sign, a form body, and a bad escape."""
+    form = b"user=%27+OR+1%3D1&note=a%2Bb"
+    return [
+        _http_frame(True, _http_request(b"GET", b"/search?q=%27%20OR%201%3D1"), 1001),
+        _http_frame(True, _http_request(b"GET", b"/a+b?c+d=e%2Bf"), 1101),
+        _http_frame(
+            True,
+            _http_request(b"POST", b"/login", form, b"application/x-www-form-urlencoded"),
+            1201,
+        ),
+        _http_frame(True, _http_request(b"GET", b"/p?q=%zz"), 1301),
+    ]
+
+
+def http_entity_packets() -> list[Packet]:
+    """Build the messages of T02: an entity in HTML, an entity with no semicolon, and no content type."""
+    return [
+        _http_frame(False, _http_reply(b"&lt;script&gt;alert(1)&lt;/script&gt;", b"text/html"), 2001),
+        _http_frame(True, _http_request(b"POST", b"/note", b"a=1&lt=2", b"text/plain"), 1001),
+        _http_frame(False, _http_reply(b"&lt;b&gt;"), 2101),
+    ]
+
+
+def invalid_utf8_packets() -> list[Packet]:
+    """Build the payloads of T04: bad bytes in an HTTP body, a few bad bytes in text, and binary data."""
+    base = Ether(src=CLIENT_MAC, dst=SERVER_MAC) / IP(src="10.0.0.1", dst="10.0.0.2", proto=6)
+    return [
+        _http_frame(False, _http_reply(b"\xff\xfe\x80 some readable text", b"text/html"), 2001),
+        base / TCP(sport=40000, dport=4444, flags="PA", seq=1001) / Raw(b"plain text \xff\xfe\x80 more plain text"),
+        base / TCP(sport=40000, dport=4444, flags="PA", seq=1101) / Raw(random.Random(17).randbytes(64)),
+    ]
+
+
 FIXTURES = {
     "basic.pcap": basic_packets,
     "tcp_handshake.pcap": tcp_handshake_packets,
@@ -381,6 +433,9 @@ FIXTURES = {
     "bonus_dns_tcp_9053.pcap": bonus_dns_tcp_9053_packets,
     "bonus_smtp_2526.pcap": bonus_smtp_2526_packets,
     "bonus_traps.pcap": bonus_traps_packets,
+    "http_percent.pcap": http_percent_packets,
+    "http_entity.pcap": http_entity_packets,
+    "invalid_utf8.pcap": invalid_utf8_packets,
 }
 
 
