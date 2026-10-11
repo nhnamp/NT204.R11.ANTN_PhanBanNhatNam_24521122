@@ -1,0 +1,16 @@
+$ python main.py --pcap TEST/A2-T08_bidirectional_flow/input.pcap --output TEST/A2-T08_bidirectional_flow/output.jsonl --flows-output TEST/A2-T08_bidirectional_flow/flows.jsonl
+packets read: 7
+events written: 7
+ok: 7
+partial: 0
+unsupported: 0
+malformed: 0
+other: 0
+preprocess valid: 7
+preprocess partial: 0
+preprocess invalid: 0
+preprocess other: 0
+dropped: 0
+flows written: 1
+elapsed: 0.002s
+exit code: 0
