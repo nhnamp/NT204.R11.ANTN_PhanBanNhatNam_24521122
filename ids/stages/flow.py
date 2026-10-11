@@ -2,8 +2,10 @@
 
 import hashlib
 from dataclasses import dataclass
+from typing import Callable, NamedTuple
 
 Endpoint = tuple[str, int]
+HANDSHAKE, ESTABLISHED, CLOSING, CLOSED, RESET = "HANDSHAKE", "ESTABLISHED", "CLOSING", "CLOSED", "RESET"
 
 
 @dataclass
@@ -24,6 +26,63 @@ class _Flow:
     ack_count: int = 0
     fin_count: int = 0
     rst_count: int = 0
+    state: str | None = None
+    fin_directions: tuple[str, ...] = ()
+
+
+class Step(NamedTuple):
+    state: str
+    fin_directions: tuple[str, ...]
+    restart: bool = False
+
+
+class _Packet(NamedTuple):
+    state: str
+    flags: list[str]
+    direction: str
+    fin_directions: tuple[str, ...]
+
+
+def _with_fin(packet: _Packet) -> tuple[str, ...]:
+    """Keep the directions of the FINs in the order of their first appearance. A repeated FIN changes nothing."""
+    return packet.fin_directions if packet.direction in packet.fin_directions else (*packet.fin_directions, packet.direction)
+
+
+def _both_fins_seen_and_last_came_from_the_other_side(packet: _Packet) -> bool:
+    return len(packet.fin_directions) == 2 and packet.direction != packet.fin_directions[1]
+
+
+_ENDED = (CLOSING, CLOSED, RESET)
+# One row per rule of the transition table. The first row that matches wins, so the order is part of the table.
+# The ACK rows do not exclude SYN, FIN, and RST, because the rows above them take those packets first.
+_RULES: tuple[tuple[Callable[[_Packet], bool], Callable[[_Packet], Step]], ...] = (
+    (lambda p: "SYN" in p.flags and "ACK" not in p.flags and p.state in _ENDED, lambda p: Step(p.state, p.fin_directions, True)),
+    (lambda p: "SYN" in p.flags, lambda p: Step(p.state, p.fin_directions)),
+    (lambda p: "RST" in p.flags and p.state != CLOSED, lambda p: Step(RESET, p.fin_directions)),
+    (lambda p: "RST" in p.flags, lambda p: Step(p.state, p.fin_directions)),
+    (lambda p: "FIN" in p.flags and p.state in (HANDSHAKE, ESTABLISHED), lambda p: Step(CLOSING, _with_fin(p))),
+    (lambda p: "FIN" in p.flags and p.state == CLOSING, lambda p: Step(CLOSING, _with_fin(p))),
+    (lambda p: "ACK" in p.flags and p.state == HANDSHAKE, lambda p: Step(ESTABLISHED, p.fin_directions)),
+    (
+        lambda p: "ACK" in p.flags and p.state == CLOSING and _both_fins_seen_and_last_came_from_the_other_side(p),
+        lambda p: Step(CLOSED, p.fin_directions),
+    ),
+    (lambda p: True, lambda p: Step(p.state, p.fin_directions)),
+)
+# The first packet of a flow decides the first state. A capture can start in the middle of a connection.
+_FIRST_STATES = (("SYN", HANDSHAKE), ("RST", RESET), ("FIN", CLOSING))
+
+
+def first_step(flags: list[str], direction: str) -> Step:
+    for flag, state in _FIRST_STATES:
+        if flag in flags:
+            return Step(state, (direction,) if state == CLOSING else ())
+    return Step(ESTABLISHED, ())
+
+
+def next_step(state: str, flags: list[str], direction: str, fin_directions: tuple[str, ...]) -> Step:
+    packet = _Packet(state, flags, direction, fin_directions)
+    return next(apply(packet) for matches, apply in _RULES if matches(packet))
 
 
 class FlowTracker:
@@ -44,8 +103,14 @@ class FlowTracker:
                 flow_id, view["protocol"], endpoint_a, endpoint_b, view["timestamp"], view["timestamp"]
             )
         forward = source == flow.endpoint_a
+        direction = "forward" if forward else "backward"
         _count(flow, view, forward)
-        return flow.flow_id, "forward" if forward else "backward", []
+        if flow.protocol == "TCP":
+            step = first_step(view["tcp_flags"], direction) if flow.state is None else next_step(
+                flow.state, view["tcp_flags"], direction, flow.fin_directions
+            )
+            flow.state, flow.fin_directions = step.state, step.fin_directions
+        return flow.flow_id, direction, []
 
     def flush(self) -> list[dict]:
         """Export every flow and empty the table. The sort is stable, so equal start times keep creation order."""
@@ -116,6 +181,6 @@ def _record(flow: _Flow, end_reason: str) -> dict:
         "ack_count": flow.ack_count if tcp else None,
         "fin_count": flow.fin_count if tcp else None,
         "rst_count": flow.rst_count if tcp else None,
-        "state": None,
+        "state": flow.state,
         "end_reason": end_reason,
     }

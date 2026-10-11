@@ -168,7 +168,6 @@ def test_a_tcp_packet_adds_one_to_each_flag_it_carries() -> None:
     (flow,) = _flush(*views)
 
     assert (flow["syn_count"], flow["ack_count"], flow["fin_count"], flow["rst_count"]) == (2, 4, 2, 1)
-    assert flow["state"] is None
 
 
 def test_last_seen_keeps_the_largest_timestamp_when_packets_arrive_out_of_order() -> None:
