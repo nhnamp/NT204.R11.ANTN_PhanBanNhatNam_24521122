@@ -1,11 +1,12 @@
 """Decode percent-encoded, form-encoded, and entity-encoded text, and keep the raw value."""
 
-import codecs
 import html
 import re
 from dataclasses import dataclass, field
 from html.entities import html5
 from urllib.parse import unquote_to_bytes
+
+from ids.stages.mime import decode_mime, decode_text
 
 INVALID_ESCAPE = re.compile(rb"%(?![0-9A-Fa-f]{2})")
 # Only an entity that ends with a semicolon counts: html.unescape also replaces "&lt" without one.
@@ -44,6 +45,11 @@ def decode_record(record: dict, payload_limit: int) -> dict:
     items = []
     if protocol == "HTTP":
         items.extend(_http_items(record, payload, payload_limit))
+    elif _is_tcp(record) and payload.data:
+        items.extend(
+            _item(mime.field_name, mime.methods, mime.value, mime.problems, payload_limit, mime.failed)
+            for mime in decode_mime(payload.data, payload.cut)
+        )
     payload_item = _payload_item(payload, payload_limit)
     if payload_item is not None:
         items.append(payload_item)
@@ -163,7 +169,7 @@ def _body_item(application: dict, payload: _Payload, limit: int) -> dict | None:
     is_text = media is None or media == FORM_TYPE or media.startswith("text/")
     if not separator or not is_text or _is_compressed(application):
         return None
-    text, invalid = _decode_text(body, final=not payload.cut)
+    text, invalid = decode_text(body, final=not payload.cut)
     decoding = decode_form(text) if media == FORM_TYPE else Decoding(text)
     entities = decode_entities(decoding.value)
     problems = decoding.problems + entities.problems
@@ -183,7 +189,7 @@ def _payload_item(payload: _Payload, limit: int) -> dict | None:
     if payload.not_hex:
         return _item("payload", [], None, ["payload is not hex"], limit)
     data = payload.data
-    text, invalid = _decode_text(data, final=not payload.cut)
+    text, invalid = decode_text(data, final=not payload.cut)
     problems = []
     if invalid == 0:
         if data.isascii():
@@ -200,13 +206,9 @@ def _payload_item(payload: _Payload, limit: int) -> dict | None:
     return _item("payload", ["charset:utf-8"] if text is not None else [], text, problems, limit)
 
 
-def _decode_text(data: bytes, final: bool) -> tuple[str, int]:
-    """Decode UTF-8. Without `final`, an incomplete character at the end is held back, not counted."""
-    text = codecs.getincrementaldecoder("utf-8")("replace").decode(data, final=final)
-    return text, max(text.count(REPLACEMENT) - data.count(b"\xef\xbf\xbd"), 0)
-
-
-def _item(field: str, methods: list[str], value: str | None, problems: list[str], limit: int) -> dict:
+def _item(
+    field: str, methods: list[str], value: str | None, problems: list[str], limit: int, failed: bool = False
+) -> dict:
     if value is not None and len(value) > limit:
         value = value[:limit]
         problems = [*problems, f"value cut at {limit} characters"]
@@ -214,7 +216,7 @@ def _item(field: str, methods: list[str], value: str | None, problems: list[str]
         "field": field,
         "methods": methods,
         "value": value,
-        "status": "partial" if problems else "ok",
+        "status": "failed" if failed else "partial" if problems else "ok",
         "reason": "; ".join(problems) or None,
     }
 
@@ -230,6 +232,11 @@ def _result(items: list[dict], errors: list[dict]) -> dict:
     else:
         status = "partial"
     return {"decode_status": status, "decoded": items, "processing_errors": errors}
+
+
+def _is_tcp(record: dict) -> bool:
+    transport = record.get("transport")
+    return isinstance(transport, dict) and _upper(transport.get("protocol")) == "TCP"
 
 
 def _upper(value: object) -> str:

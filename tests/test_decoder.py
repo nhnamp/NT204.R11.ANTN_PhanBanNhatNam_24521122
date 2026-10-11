@@ -344,3 +344,74 @@ def test_the_enricher_runs_the_real_decoder() -> None:
 
     assert output["decode_status"] == "ok"
     assert [item["field"] for item in output["decoded"]] == ["http.target"]
+
+
+MIME_MESSAGE = b"Content-Transfer-Encoding: base64\r\n\r\nSGVsbG8=\r\n.\r\n"
+
+
+def _mime_record(payload: bytes = MIME_MESSAGE, protocol: str | None = "UNKNOWN", **record: object) -> dict:
+    base = {"transport": {"protocol": "TCP"}, "payload_hex": payload.hex(), "payload_len": len(payload)}
+    if protocol is not None:
+        base["app_protocol"] = protocol
+    return {**base, **record}
+
+
+@pytest.mark.parametrize(
+    ("record", "fields"),
+    [
+        (_mime_record(), ["mime.body"]),
+        (_mime_record(protocol="SMTP"), ["mime.body"]),
+        (_mime_record(protocol=None), ["mime.body"]),
+        (_mime_record(protocol="tcp-garbage"), ["mime.body"]),
+        (_mime_record(transport={"protocol": "tcp"}), ["mime.body"]),
+        (_mime_record(protocol="HTTP"), []),
+        (_mime_record(protocol="DNS"), []),
+        (_mime_record(transport={"protocol": "UDP"}), []),
+        (_mime_record(transport=None), []),
+        (_mime_record(payload_hex="not hex"), ["payload"]),
+    ],
+    ids=["unknown", "smtp", "missing-protocol", "other-protocol", "lower-case-tcp", "http", "dns", "udp",
+         "missing-transport", "not-hex"],
+)
+def test_mime_runs_for_a_tcp_record_that_is_not_http_or_dns(record: dict, fields: list[str]) -> None:
+    result = decode_record(record, LIMIT)
+
+    assert [item["field"] for item in result["decoded"]] == fields
+
+
+def test_a_cut_after_the_end_marker_does_not_touch_the_message() -> None:
+    record = _mime_record(MIME_MESSAGE + b"QUIT\r\n" * 10)
+
+    result = decode_record(record, len(MIME_MESSAGE) + 3)
+
+    assert [(i["field"], i["value"], i["status"]) for i in result["decoded"]] == [("mime.body", "Hello", "ok")]
+    assert [e["type"] for e in result["processing_errors"]] == ["limit"]
+
+
+def test_a_failed_item_and_an_ok_item_make_the_record_partial() -> None:
+    bad = b"--XX\r\nContent-Transfer-Encoding: base64\r\n\r\n!!!\r\n"
+    good = b"--XX\r\nContent-Transfer-Encoding: base64\r\n\r\nSGk=\r\n--XX--"
+    message = b"Content-Type: multipart/mixed; boundary=XX\r\n\r\n" + bad + good + b"\r\n.\r\n"
+
+    result = decode_record(_mime_record(message), LIMIT)
+
+    assert [(i["field"], i["status"], i["value"]) for i in result["decoded"]] == [
+        ("mime.part[1]", "failed", None),
+        ("mime.part[2]", "ok", "Hi"),
+    ]
+    assert result["decode_status"] == "partial"
+
+
+def test_a_record_with_only_failed_items_is_failed() -> None:
+    message = b"Content-Transfer-Encoding: base64\r\n\r\n!!!\r\n.\r\n"
+
+    assert decode_record(_mime_record(message), LIMIT)["decode_status"] == "failed"
+
+
+def test_mime_items_come_before_the_payload_item() -> None:
+    message = b"Content-Transfer-Encoding: quoted-printable\r\n\r\nabc\xffdef\r\n.\r\n"
+
+    result = decode_record(_mime_record(message), LIMIT)
+
+    assert [item["field"] for item in result["decoded"]] == ["mime.body", "payload"]
+
