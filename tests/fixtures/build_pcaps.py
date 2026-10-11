@@ -217,6 +217,11 @@ def dns_tcp_packets() -> list[Packet]:
     return [frame / TCP(sport=40000, dport=53, flags="PA") / Raw(payload)]
 
 
+def dns_udp_flow_packets() -> list[Packet]:
+    """Build the query and the response of T10: one UDP flow, with the reversed 5-tuple in the reply."""
+    return dns_query_packets() + dns_response_packets()
+
+
 def _smtp_frame(
     client_to_server: bool, payload: bytes, sequence: int, port: int = 25
 ) -> Packet:
@@ -475,6 +480,7 @@ FIXTURES = {
     "dns_response.pcap": dns_response_packets,
     "dns_cname.pcap": dns_cname_packets,
     "dns_tcp.pcap": dns_tcp_packets,
+    "dns_udp_flow.pcap": dns_udp_flow_packets,
     "smtp_session.pcap": smtp_session_packets,
     "smtp_mime.pcap": smtp_mime_packets,
     "unknown_protocols.pcap": unknown_protocol_packets,
