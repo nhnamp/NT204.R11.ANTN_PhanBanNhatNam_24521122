@@ -22,6 +22,7 @@ This directory holds the graded evidence for Assignment 01. One test case owns o
 | BONUS-02 | DNS on a non-standard port | [`BONUS-02_dns_nonstandard_port`](BONUS-02_dns_nonstandard_port/) | one run per file in `input/` into `output/` (see the case README) | PASS | `02cb171` |
 | BONUS-03 | SMTP on a non-standard port | [`BONUS-03_smtp_nonstandard_port`](BONUS-03_smtp_nonstandard_port/) | `python main.py --pcap TEST/BONUS-03_smtp_nonstandard_port/input.pcap --output TEST/BONUS-03_smtp_nonstandard_port/output.jsonl` | PASS | `334e6c5` |
 | BONUS-04 | Detection traps | [`BONUS-04_detection_traps`](BONUS-04_detection_traps/) | `python main.py --pcap TEST/BONUS-04_detection_traps/input.pcap --output TEST/BONUS-04_detection_traps/output.jsonl` | PASS | `c194815` |
+| A2-T10 | UDP query and response | [`A2-T10_udp_flow`](A2-T10_udp_flow/) | `python main.py --pcap TEST/A2-T10_udp_flow/input.pcap --output TEST/A2-T10_udp_flow/output.jsonl --flows-output TEST/A2-T10_udp_flow/flows.jsonl` | PASS | |
 
 Add one row per test case when the case passes. Fill the commit column in a later commit, because a commit cannot hold its own hash. A retest adds its commit after the word "retest". The last hash in a row is the commit of the current evidence.
 
