@@ -1,5 +1,6 @@
 """Decode percent-encoded, form-encoded, and entity-encoded text, and keep the raw value."""
 
+import codecs
 import html
 import re
 from dataclasses import dataclass, field
@@ -13,6 +14,10 @@ INVALID_ESCAPE = re.compile(rb"%(?![0-9A-Fa-f]{2})")
 ENTITY = re.compile(r"&(?:#([0-9]+)|#[xX]([0-9a-fA-F]+)|([A-Za-z][A-Za-z0-9]{1,31}));")
 TOO_LARGE = 0x110000
 REPLACEMENT = "\ufffd"
+HEX = re.compile(r"(?:[0-9a-fA-F]{2})*")
+FORM_TYPE = "application/x-www-form-urlencoded"
+# Text uses TAB, LF, and CR, so they do not count as control bytes of a binary payload.
+CONTROL_BYTES = bytes(byte for byte in (*range(0x20), 0x7F) if byte not in (0x09, 0x0A, 0x0D))
 
 
 @dataclass
@@ -20,6 +25,29 @@ class Decoding:
     value: str
     methods: list[str] = field(default_factory=list)
     problems: list[str] = field(default_factory=list)
+
+
+@dataclass
+class _Payload:
+    data: bytes = b""
+    not_hex: bool = False
+    cut: bool = False
+    error: dict | None = None
+
+
+def decode_record(record: dict, payload_limit: int) -> dict:
+    """Return the decoding fields of one record. A missing or mistyped field gives no item."""
+    protocol = _upper(record.get("app_protocol"))
+    if protocol == "DNS":
+        return _result([], [])
+    payload = _read_payload(record, payload_limit)
+    items = []
+    if protocol == "HTTP":
+        items.extend(_http_items(record, payload, payload_limit))
+    payload_item = _payload_item(payload, payload_limit)
+    if payload_item is not None:
+        items.append(payload_item)
+    return _result(items, [payload.error] if payload.error else [])
 
 
 def decode_percent(data: bytes, form: bool) -> bytes:
@@ -78,6 +106,154 @@ def _code_point(decimal: str | None, hexadecimal: str | None) -> int:
     if len(digits) > (7 if base == 10 else 6):
         return TOO_LARGE
     return int(digits, base)
+
+
+def decode_form(text: str) -> Decoding:
+    raw = text.encode("utf-8")
+    decoded = decode_percent(raw, form=True)
+    value, problems = _utf8(decoded)
+    if INVALID_ESCAPE.search(raw):
+        problems.insert(0, "invalid percent escape")
+    return Decoding(value, ["form"] if decoded != raw else [], problems)
+
+
+def _read_payload(record: dict, limit: int) -> _Payload:
+    text, from_preview = record.get("payload_hex"), False
+    if not isinstance(text, str):
+        text, from_preview = record.get("payload_preview"), True
+    if not isinstance(text, str):
+        return _Payload()
+    # Cut the text before the conversion, so a huge payload_hex is never converted whole.
+    cut_here = len(text) > 2 * limit
+    text = text[: 2 * limit]
+    if not HEX.fullmatch(text):
+        return _Payload(not_hex=True)
+    data = bytes.fromhex(text)
+    length = record.get("payload_len")
+    known = isinstance(length, int) and not isinstance(length, bool)
+    cut = cut_here or (known and len(data) < length)
+    error = None
+    if cut:
+        where = "to the preview" if from_preview else "at the payload limit"
+        size = f"{len(data)} of {length} bytes" if known else f"{len(data)} bytes"
+        error = {"stage": "decoder", "type": "limit", "message": f"payload cut {where} ({size})"}
+    return _Payload(data, False, cut, error)
+
+
+def _http_items(record: dict, payload: _Payload, limit: int) -> list[dict]:
+    application = record.get("application")
+    if not isinstance(application, dict):
+        application = {}
+    items = []
+    target = application.get("target")
+    if isinstance(target, str):
+        decoding = decode_target(target)
+        if decoding.methods or decoding.problems:
+            items.append(_item("http.target", decoding.methods, decoding.value, decoding.problems, limit))
+    body = _body_item(application, payload, limit)
+    if body is not None:
+        items.append(body)
+    return items
+
+
+def _body_item(application: dict, payload: _Payload, limit: int) -> dict | None:
+    # parse_http splits at the same place, but its body_preview is cut and has lost the bad bytes.
+    _, separator, body = payload.data.partition(b"\r\n\r\n")
+    media = _media_type(application.get("content_type") or _header(application, "content-type"))
+    is_text = media is None or media == FORM_TYPE or media.startswith("text/")
+    if not separator or not is_text or _is_compressed(application):
+        return None
+    text, invalid = _decode_text(body, final=not payload.cut)
+    decoding = decode_form(text) if media == FORM_TYPE else Decoding(text)
+    entities = decode_entities(decoding.value)
+    problems = decoding.problems + entities.problems
+    if entities.value == text and not problems:
+        return None
+    if invalid:
+        problems.append("invalid UTF-8 in body")
+    # Only a literal False counts: a record without the key must not look cut.
+    if application.get("body_complete") is False:
+        problems.append("body continues in a later segment")
+    if payload.cut:
+        problems.append("payload cut")
+    return _item("http.body", decoding.methods + entities.methods, entities.value, problems, limit)
+
+
+def _payload_item(payload: _Payload, limit: int) -> dict | None:
+    if payload.not_hex:
+        return _item("payload", [], None, ["payload is not hex"], limit)
+    data = payload.data
+    text, invalid = _decode_text(data, final=not payload.cut)
+    problems = []
+    if invalid == 0:
+        if data.isascii():
+            return None
+    else:
+        control = len(data) - len(data.translate(None, CONTROL_BYTES))
+        if (control + invalid) * 4 > len(data):
+            text = None
+            problems.append("binary payload")
+        else:
+            problems.append(f"invalid UTF-8: {invalid} invalid sequence{'' if invalid == 1 else 's'} replaced")
+    if payload.cut:
+        problems.append("payload cut")
+    return _item("payload", ["charset:utf-8"] if text is not None else [], text, problems, limit)
+
+
+def _decode_text(data: bytes, final: bool) -> tuple[str, int]:
+    """Decode UTF-8. Without `final`, an incomplete character at the end is held back, not counted."""
+    text = codecs.getincrementaldecoder("utf-8")("replace").decode(data, final=final)
+    return text, max(text.count(REPLACEMENT) - data.count(b"\xef\xbf\xbd"), 0)
+
+
+def _item(field: str, methods: list[str], value: str | None, problems: list[str], limit: int) -> dict:
+    if value is not None and len(value) > limit:
+        value = value[:limit]
+        problems = [*problems, f"value cut at {limit} characters"]
+    return {
+        "field": field,
+        "methods": methods,
+        "value": value,
+        "status": "partial" if problems else "ok",
+        "reason": "; ".join(problems) or None,
+    }
+
+
+def _result(items: list[dict], errors: list[dict]) -> dict:
+    statuses = {item["status"] for item in items}
+    if not items:
+        status = "not_applicable"
+    elif statuses == {"ok"}:
+        status = "ok"
+    elif statuses == {"failed"}:
+        status = "failed"
+    else:
+        status = "partial"
+    return {"decode_status": status, "decoded": items, "processing_errors": errors}
+
+
+def _upper(value: object) -> str:
+    return value.upper() if isinstance(value, str) else ""
+
+
+def _media_type(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    return value.split(";")[0].strip().lower() or None
+
+
+def _header(application: dict, name: str) -> object:
+    """Look a header up without regard to case: an events file can hold any spelling."""
+    headers = application.get("headers")
+    if not isinstance(headers, dict):
+        return None
+    return next((value for key, value in headers.items() if isinstance(key, str) and key.lower() == name), None)
+
+
+def _is_compressed(application: dict) -> bool:
+    value = _header(application, "content-encoding")
+    values = value if isinstance(value, list) else [value]
+    return any(isinstance(item, str) and item.strip().lower() not in ("", "identity") for item in values)
 
 
 def _target_bytes(target: str) -> bytes:

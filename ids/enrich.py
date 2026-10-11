@@ -1,9 +1,11 @@
 """Run the decoder, the preprocessor, and the flow tracker on one record."""
 
 from collections.abc import Callable
+from functools import partial
 
 from ids.config import Config
 from ids.contract import ENRICHMENT_FIELDS, default_enrichment
+from ids.stages.decoder import decode_record
 
 STAGE_FIELDS = {
     "decoder": ("decode_status", "decoded"),
@@ -16,7 +18,7 @@ class Enricher:
     def __init__(self, config: Config) -> None:
         self._config = config
         # Instance attributes, not module functions, so a test can replace one stage.
-        self._decode = _no_result
+        self._decode = partial(decode_record, payload_limit=config.payload_limit)
         self._preprocess = _no_result
         self._track = _no_flow
 
