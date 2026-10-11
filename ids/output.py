@@ -27,7 +27,7 @@ class JsonLinesWriter:
         self.close()
 
     def write(self, record: Event | dict) -> None:
-        self._file.write(_encode(record))
+        self._file.write(encode_line(record))
         self._unflushed += 1
         if self._unflushed >= self._flush_every:
             self.flush()
@@ -40,7 +40,7 @@ class JsonLinesWriter:
         self._file.close()
 
 
-def _encode(record: Event | dict) -> str:
+def encode_line(record: Event | dict) -> str:
     """Build the whole line first, so a bad record never leaves half a line in the file."""
     try:
         data = record.to_dict() if isinstance(record, Event) else record
