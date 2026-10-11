@@ -6,6 +6,7 @@ from functools import partial
 from ids.config import Config
 from ids.contract import ENRICHMENT_FIELDS, TYPED_ERRORS, default_enrichment
 from ids.stages.decoder import decode_record
+from ids.stages.flow import FlowTracker
 from ids.stages.preprocessor import preprocess_record
 
 STAGE_FIELDS = {
@@ -21,7 +22,8 @@ class Enricher:
         # Instance attributes, not module functions, so a test can replace one stage.
         self._decode = partial(decode_record, payload_limit=config.payload_limit)
         self._preprocess = preprocess_record
-        self._track = _no_flow
+        self._tracker = FlowTracker()
+        self._track = self._update_flow
 
     def process(
         self, record: dict, input_errors: list[dict] | None = None
@@ -51,6 +53,10 @@ class Enricher:
 
     def flush(self) -> list[dict]:
         return []
+
+    def _update_flow(self, record: dict) -> tuple[dict, list[dict]]:
+        flow_id, direction, exported = self._tracker.update(record["normalized"])
+        return {"flow_id": flow_id, "direction": direction}, exported
 
     def _run_stage(self, output: dict, stage: str, run: Callable[[dict], dict]) -> bool:
         """Merge the result of one stage. A failure keeps the defaults and records the error."""
@@ -120,7 +126,3 @@ def _apply(output: dict, result: dict) -> None:
             output[key].extend(value)
         else:
             output[key] = value
-
-
-def _no_flow(record: dict) -> tuple[dict, list[dict]]:
-    return {}, []
