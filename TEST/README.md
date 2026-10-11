@@ -24,6 +24,7 @@ This directory holds the graded evidence for Assignment 01. One test case owns o
 | BONUS-04 | Detection traps | [`BONUS-04_detection_traps`](BONUS-04_detection_traps/) | `python main.py --pcap TEST/BONUS-04_detection_traps/input.pcap --output TEST/BONUS-04_detection_traps/output.jsonl` | PASS | `c194815` |
 | A2-T07 | TCP handshake | [`A2-T07_tcp_handshake`](A2-T07_tcp_handshake/) | `python main.py --pcap TEST/A2-T07_tcp_handshake/input.pcap --output TEST/A2-T07_tcp_handshake/output.jsonl --flows-output TEST/A2-T07_tcp_handshake/flows.jsonl` | PASS | |
 | A2-T08 | Bidirectional flow | [`A2-T08_bidirectional_flow`](A2-T08_bidirectional_flow/) | `python main.py --pcap TEST/A2-T08_bidirectional_flow/input.pcap --output TEST/A2-T08_bidirectional_flow/output.jsonl --flows-output TEST/A2-T08_bidirectional_flow/flows.jsonl` | PASS | |
+| A2-T09 | TCP close | [`A2-T09_tcp_close`](A2-T09_tcp_close/) | one run per file in `input/` into `output/` and `flows/` (see the case README) | PASS | |
 | A2-T10 | UDP query and response | [`A2-T10_udp_flow`](A2-T10_udp_flow/) | `python main.py --pcap TEST/A2-T10_udp_flow/input.pcap --output TEST/A2-T10_udp_flow/output.jsonl --flows-output TEST/A2-T10_udp_flow/flows.jsonl` | PASS | |
 
 Add one row per test case when the case passes. Fill the commit column in a later commit, because a commit cannot hold its own hash. A retest adds its commit after the word "retest". The last hash in a row is the commit of the current evidence.
