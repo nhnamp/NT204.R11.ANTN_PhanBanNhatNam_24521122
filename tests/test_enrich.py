@@ -188,3 +188,42 @@ def test_flows_that_left_the_table_are_kept_when_the_tracker_result_fails_to_mer
 
     assert exported == left_the_table
     assert output["processing_errors"][0]["stage"] == "flow"
+
+
+@pytest.mark.parametrize(
+    ("changes", "unknown", "dropped"),
+    [
+        ({"status": "unsupported"}, "drop", True),
+        ({"timestamp": "yesterday"}, "drop", True),
+        ({"status": "partial"}, "drop", False),
+        ({"status": "unsupported"}, "keep", False),
+        ({"timestamp": "yesterday"}, "keep", False),
+    ],
+    ids=["unsupported-dropped", "invalid-dropped", "partial-kept", "unsupported-kept-by-keep", "invalid-kept-by-keep"],
+)
+def test_the_unknown_policy_drops_unsupported_and_invalid_records(changes: dict, unknown: str, dropped: bool) -> None:
+    enricher = Enricher(Config(None, None, "events.jsonl", unknown, None))
+
+    output, exported = enricher.process({**RECORD, **changes})
+
+    assert (output is None) == dropped
+    assert exported == []
+
+
+@pytest.mark.parametrize("attribute", ["_decode", "_preprocess"])
+def test_a_record_with_a_bug_entry_is_never_dropped(monkeypatch: pytest.MonkeyPatch, attribute: str) -> None:
+    enricher = Enricher(Config(None, None, "events.jsonl", "drop", None))
+    monkeypatch.setattr(enricher, attribute, _raise)
+
+    output, _ = enricher.process({**RECORD, "status": "unsupported"})
+
+    assert [error["type"] for error in output["processing_errors"]] == ["RuntimeError"]
+
+
+def test_an_input_error_of_a_known_type_does_not_keep_an_invalid_record() -> None:
+    enricher = Enricher(Config(None, None, "events.jsonl", "drop", None))
+    typed = [{"stage": "input", "type": "invalid_record", "message": "line 3"}]
+    bug = [{"stage": "input", "type": "TypeError", "message": "x"}]
+
+    assert enricher.process({"source": "events:f:3"}, typed) == (None, [])
+    assert enricher.process({"source": "events:f:3"}, bug)[0] is not None

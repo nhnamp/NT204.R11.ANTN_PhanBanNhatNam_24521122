@@ -4,8 +4,9 @@ from collections.abc import Callable
 from functools import partial
 
 from ids.config import Config
-from ids.contract import ENRICHMENT_FIELDS, default_enrichment
+from ids.contract import ENRICHMENT_FIELDS, TYPED_ERRORS, default_enrichment
 from ids.stages.decoder import decode_record
+from ids.stages.preprocessor import preprocess_record
 
 STAGE_FIELDS = {
     "decoder": ("decode_status", "decoded"),
@@ -19,7 +20,7 @@ class Enricher:
         self._config = config
         # Instance attributes, not module functions, so a test can replace one stage.
         self._decode = partial(decode_record, payload_limit=config.payload_limit)
-        self._preprocess = _no_result
+        self._preprocess = preprocess_record
         self._track = _no_flow
 
     def process(
@@ -35,6 +36,8 @@ class Enricher:
         self._run_stage(output, "decoder", self._decode)
         if not self._run_stage(output, "preprocessor", self._preprocess):
             output["reason"] = "preprocessor failed"
+        if self._config.unknown == "drop" and _is_droppable(output):
+            return None, []
         exported: list[dict] = []
         if output["processing_action"] == "keep":
             try:
@@ -90,6 +93,16 @@ def fallback_record(record: dict, exc: Exception, *, keep_base: bool) -> dict:
     return output
 
 
+def _is_droppable(output: dict) -> bool:
+    """Say if the `--unknown drop` policy removes the record.
+
+    An entry with an exception class name is a bug. A record that carries one is written, so
+    the bug stays visible.
+    """
+    unusable = output.get("status") == "unsupported" or output["preprocess_status"] == "invalid"
+    return unusable and all(error["type"] in TYPED_ERRORS for error in output["processing_errors"])
+
+
 def _fail(output: dict, stage: str, exc: Exception) -> None:
     """Record the error and take back whatever the stage wrote, because it can fail halfway."""
     output["processing_errors"].append(error_entry(stage, exc))
@@ -107,10 +120,6 @@ def _apply(output: dict, result: dict) -> None:
             output[key].extend(value)
         else:
             output[key] = value
-
-
-def _no_result(record: dict) -> dict:
-    return {}
 
 
 def _no_flow(record: dict) -> tuple[dict, list[dict]]:
