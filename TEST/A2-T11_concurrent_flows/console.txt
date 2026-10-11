@@ -1,0 +1,16 @@
+$ python main.py --pcap TEST/A2-T11_concurrent_flows/input.pcap --output TEST/A2-T11_concurrent_flows/output.jsonl --flows-output TEST/A2-T11_concurrent_flows/flows.jsonl
+packets read: 12
+events written: 12
+ok: 12
+partial: 0
+unsupported: 0
+malformed: 0
+other: 0
+preprocess valid: 12
+preprocess partial: 0
+preprocess invalid: 0
+preprocess other: 0
+dropped: 0
+flows written: 4
+elapsed: 0.002s
+exit code: 0
