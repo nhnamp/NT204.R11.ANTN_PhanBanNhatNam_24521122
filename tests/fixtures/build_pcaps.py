@@ -468,6 +468,147 @@ def normalization_packets() -> list[Packet]:
     return [_http_frame(True, first, 1001), _http_frame(True, second, 1201), _dns_udp_frame(query)]
 
 
+Endpoint = tuple[str, int]
+DEFAULT_CLIENT: Endpoint = ("10.0.0.1", 40000)
+DEFAULT_SERVER: Endpoint = ("10.0.0.2", 80)
+FLOW_REQUEST = b"GET /index.html HTTP/1.1\r\nHost: example.com\r\n\r\n"
+FLOW_RESPONSE = b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello"
+STATS_SERVER: Endpoint = ("10.0.0.2", 4444)
+# Offsets in seconds from BASE_TIME. A fixture without an entry uses BASE_TIME + index * 0.5.
+FIXTURE_TIMES = {
+    "flow_stats.pcap": [0.0, 0.01, 0.02, 1.0, 1.1, 2.5, 2.6, 4.0, 4.1, 4.2],
+}
+
+
+def _tcp_segment(
+    from_client: bool,
+    flags: str,
+    seq: int,
+    ack: int = 0,
+    payload: bytes = b"",
+    client: Endpoint = DEFAULT_CLIENT,
+    server: Endpoint = DEFAULT_SERVER,
+) -> Packet:
+    """Build one TCP segment of a connection between a client and a server."""
+    source, destination = (client, server) if from_client else (server, client)
+    macs = (CLIENT_MAC, SERVER_MAC) if from_client else (SERVER_MAC, CLIENT_MAC)
+    return (
+        Ether(src=macs[0], dst=macs[1])
+        / IP(src=source[0], dst=destination[0], proto=6)
+        / TCP(sport=source[1], dport=destination[1], flags=flags, seq=seq, ack=ack)
+        / Raw(payload)
+    )
+
+
+def _handshake(client: Endpoint = DEFAULT_CLIENT, server: Endpoint = DEFAULT_SERVER) -> list[Packet]:
+    """Build SYN, SYN/ACK, and ACK. The client starts at sequence 1000 and the server at 5000."""
+    return [
+        _tcp_segment(True, "S", 1000, 0, b"", client, server),
+        _tcp_segment(False, "SA", 5000, 1001, b"", client, server),
+        _tcp_segment(True, "A", 1001, 5001, b"", client, server),
+    ]
+
+
+def flow_http_packets() -> list[Packet]:
+    """Build one HTTP exchange inside one connection: handshake, request, ACK, response, ACK."""
+    after_request = 1001 + len(FLOW_REQUEST)
+    after_response = 5001 + len(FLOW_RESPONSE)
+    return _handshake() + [
+        _tcp_segment(True, "PA", 1001, 5001, FLOW_REQUEST),
+        _tcp_segment(False, "A", 5001, after_request),
+        _tcp_segment(False, "PA", 5001, after_request, FLOW_RESPONSE),
+        _tcp_segment(True, "A", after_request, after_response),
+    ]
+
+
+def tcp_close_fin_packets() -> list[Packet]:
+    """Build a handshake and a close where each side sends a FIN and the client sends the last ACK."""
+    return _handshake() + [
+        _tcp_segment(True, "FA", 1001, 5001),
+        _tcp_segment(False, "A", 5001, 1002),
+        _tcp_segment(False, "FA", 5001, 1002),
+        _tcp_segment(True, "A", 1002, 5002),
+    ]
+
+
+def tcp_close_rst_packets() -> list[Packet]:
+    """Build a handshake, a request, and a reset from the server."""
+    return _handshake() + [
+        _tcp_segment(True, "PA", 1001, 5001, FLOW_REQUEST),
+        _tcp_segment(False, "RA", 5001, 1001 + len(FLOW_REQUEST)),
+    ]
+
+
+def concurrent_flows_packets() -> list[Packet]:
+    """Build four flows whose packets alternate: three TCP connections and one UDP exchange."""
+    first = (("10.0.0.1", 40000), ("10.0.0.2", 80))
+    second = (("10.0.0.1", 40001), ("10.0.0.2", 80))
+    third = (("10.0.0.1", 40002), ("10.0.0.3", 80))
+    query = bytes(DNS(id=0x1234, rd=1, qd=DNSQR(qname="example.com", qtype="A")))
+    answer = DNSRR(rrname="example.com", type="A", ttl=300, rdata="93.184.216.34")
+    response = bytes(DNS(id=0x1234, qr=1, rd=1, ra=1, qd=DNSQR(qname="example.com", qtype="A"), an=answer))
+    udp = Ether(src=CLIENT_MAC, dst=SERVER_MAC) / IP(src="10.0.0.1", dst="10.0.0.2", proto=17)
+    udp_back = Ether(src=SERVER_MAC, dst=CLIENT_MAC) / IP(src="10.0.0.2", dst="10.0.0.1", proto=17)
+    return [
+        _tcp_segment(True, "S", 1000, 0, b"", *first),
+        _tcp_segment(True, "S", 1000, 0, b"", *second),
+        _tcp_segment(False, "SA", 5000, 1001, b"", *first),
+        _tcp_segment(True, "S", 1000, 0, b"", *third),
+        _tcp_segment(False, "SA", 5000, 1001, b"", *second),
+        _tcp_segment(True, "A", 1001, 5001, b"", *first),
+        udp / UDP(sport=40003, dport=53) / Raw(query),
+        _tcp_segment(False, "SA", 5000, 1001, b"", *third),
+        _tcp_segment(True, "A", 1001, 5001, b"", *second),
+        udp_back / UDP(sport=53, dport=40003) / Raw(response),
+        _tcp_segment(True, "A", 1001, 5001, b"", *third),
+        _tcp_segment(True, "PA", 1001, 5001, FLOW_REQUEST, *first),
+    ]
+
+
+def flow_stats_packets() -> list[Packet]:
+    """Build a connection of 10 packets with known flags and sizes. FIXTURE_TIMES gives it uneven times."""
+    request, reply = b"a" * 100, b"b" * 300
+    client, server = DEFAULT_CLIENT, STATS_SERVER
+
+    def segment(from_client: bool, flags: str, seq: int, ack: int = 0, payload: bytes = b"") -> Packet:
+        return _tcp_segment(from_client, flags, seq, ack, payload, client, server)
+
+    return [
+        segment(True, "S", 1000),
+        segment(False, "SA", 5000, 1001),
+        segment(True, "A", 1001, 5001),
+        segment(True, "PA", 1001, 5001, request),
+        segment(False, "A", 5001, 1101),
+        segment(False, "PA", 5001, 1101, reply),
+        segment(True, "A", 1101, 5301),
+        segment(True, "FA", 1101, 5301),
+        segment(False, "FA", 5301, 1102),
+        segment(True, "A", 1102, 5302),
+    ]
+
+
+def expected_flow_stats() -> dict:
+    """Compute the flow record counters of flow_stats.pcap from the packets, not from the tracker."""
+    packets = flow_stats_packets()
+    times = FIXTURE_TIMES["flow_stats.pcap"]
+    forward = [p for p in packets if p[IP].src == DEFAULT_CLIENT[0]]
+    backward = [p for p in packets if p[IP].src != DEFAULT_CLIENT[0]]
+    flags = [str(p[TCP].flags) for p in packets]
+    return {
+        "packet_count": len(packets),
+        "byte_count": sum(len(bytes(p)) for p in packets),
+        "forward_packet_count": len(forward),
+        "forward_byte_count": sum(len(bytes(p)) for p in forward),
+        "backward_packet_count": len(backward),
+        "backward_byte_count": sum(len(bytes(p)) for p in backward),
+        "syn_count": sum("S" in f for f in flags),
+        "ack_count": sum("A" in f for f in flags),
+        "fin_count": sum("F" in f for f in flags),
+        "rst_count": sum("R" in f for f in flags),
+        "duration": round(times[-1] - times[0], 6),
+    }
+
+
 FIXTURES = {
     "basic.pcap": basic_packets,
     "tcp_handshake.pcap": tcp_handshake_packets,
@@ -494,6 +635,11 @@ FIXTURES = {
     "http_entity.pcap": http_entity_packets,
     "invalid_utf8.pcap": invalid_utf8_packets,
     "normalization.pcap": normalization_packets,
+    "flow_http.pcap": flow_http_packets,
+    "tcp_close_fin.pcap": tcp_close_fin_packets,
+    "tcp_close_rst.pcap": tcp_close_rst_packets,
+    "concurrent_flows.pcap": concurrent_flows_packets,
+    "flow_stats.pcap": flow_stats_packets,
 }
 
 
@@ -674,17 +820,17 @@ def build_events() -> None:
         (EVENTS_DIR / name).write_bytes(b"\n".join(lines) + b"\n")
 
 
-def write_fixture(path: Path, packets: list[Packet]) -> None:
+def write_fixture(path: Path, packets: list[Packet], offsets: list[float] | None = None) -> None:
     """Write packets with fixed times, so the file is reproducible."""
     for index, packet in enumerate(packets):
-        packet.time = BASE_TIME + index * 0.5
+        packet.time = BASE_TIME + (offsets[index] if offsets else index * 0.5)
     wrpcap(str(path), packets)
 
 
 def build_all() -> None:
     everything: list[Packet] = []
     for name, build_packets in FIXTURES.items():
-        write_fixture(FIXTURE_DIR / name, build_packets())
+        write_fixture(FIXTURE_DIR / name, build_packets(), FIXTURE_TIMES.get(name))
         everything.extend(build_packets())
     write_fixture(FIXTURE_DIR / "all.pcap", everything)
     build_malformed()
