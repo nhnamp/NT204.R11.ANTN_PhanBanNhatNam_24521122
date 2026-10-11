@@ -1,0 +1,16 @@
+$ python main.py --pcap TEST/A2-T07_tcp_handshake/input.pcap --output TEST/A2-T07_tcp_handshake/output.jsonl --flows-output TEST/A2-T07_tcp_handshake/flows.jsonl
+packets read: 3
+events written: 3
+ok: 3
+partial: 0
+unsupported: 0
+malformed: 0
+other: 0
+preprocess valid: 3
+preprocess partial: 0
+preprocess invalid: 0
+preprocess other: 0
+dropped: 0
+flows written: 1
+elapsed: 0.001s
+exit code: 0
