@@ -1,5 +1,6 @@
 """Tests for the events file source."""
 
+import re
 from pathlib import Path
 
 import pytest
@@ -33,7 +34,8 @@ def _line_of(size: int) -> bytes:
         (b'{"text": "\\ud800"}', "cannot be written as JSON"),
         (b'{"text": "\xff\xfe"}', "not valid UTF-8"),
         (b'{"big": ' + b"9" * 4301 + b"}", "not valid JSON"),
-        (b"[" * 100_000 + b"]" * 100_000, "nested too deeply"),
+        # Where the C stack is large, loads accepts the depth, and the list is refused as a non-object.
+        (b"[" * 100_000 + b"]" * 100_000, "nested too deeply|not an object"),
         (b"\xef\xbb\xbf{}", "not valid JSON"),
     ],
     ids=["not-json", "list", "string", "nan", "infinity", "huge-float", "lone-surrogate", "not-utf8", "huge-int", "deep-nesting", "bom-after-line-1"],
@@ -48,7 +50,7 @@ def test_bad_line_becomes_a_marked_record_and_the_next_line_still_reads(
     record, errors = items[1]
     assert record == {"source": f"events:{tmp_path / 'events.jsonl'}:2"}
     assert [(e["stage"], e["type"]) for e in errors] == [("input", "invalid_record")]
-    assert reason in errors[0]["message"]
+    assert re.search(reason, errors[0]["message"])
     encode_line(record)
     encode_line({"processing_errors": errors})
     assert items[2] == ({"n": 2}, [])
@@ -108,3 +110,23 @@ def test_empty_file_gives_no_records(tmp_path: Path) -> None:
 def test_missing_file_raises_os_error(tmp_path: Path) -> None:
     with pytest.raises(OSError):
         list(EventFileSource(tmp_path / "missing.jsonl"))
+
+
+def _raise_recursion_error(*args: object, **kwargs: object) -> str:
+    raise RecursionError("maximum recursion depth exceeded")
+
+
+@pytest.mark.parametrize(
+    ("function", "reason"),
+    [("loads", "nested too deeply"), ("dumps", "cannot be written as JSON")],
+)
+def test_a_recursion_error_makes_the_line_invalid(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, function: str, reason: str
+) -> None:
+    """Force the error, because the depth that raises it depends on the C stack of the machine."""
+    monkeypatch.setattr(f"ids.capture.events.json.{function}", _raise_recursion_error)
+
+    items = _read(tmp_path, b'{"n": 1}\n')
+
+    (record, errors), = items
+    assert reason in errors[0]["message"]

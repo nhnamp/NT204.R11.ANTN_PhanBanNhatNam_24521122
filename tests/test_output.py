@@ -87,7 +87,6 @@ BAD_RECORDS = {
     "nan": {"timestamp": float("nan")},
     "lone surrogate": {"text": "\ud800"},
     "bytes": {"payload": b"x"},
-    "deep nesting": _nested_dict(200_000),
 }
 
 
@@ -104,3 +103,34 @@ def test_bad_record_raises_and_adds_nothing_to_the_file(tmp_path: Path, record: 
 
         writer.write({"n": 3})
         assert path.read_text(encoding="utf-8").splitlines() == ['{"n": 1}', '{"n": 2}', '{"n": 3}']
+
+
+def _raise_recursion_error(*args: object, **kwargs: object) -> str:
+    raise RecursionError("maximum recursion depth exceeded")
+
+
+def test_a_recursion_error_while_serializing_becomes_a_value_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """json.dumps raises RecursionError only when the C stack is small enough, so force it."""
+    monkeypatch.setattr("ids.output.json.dumps", _raise_recursion_error)
+    path = tmp_path / "records.jsonl"
+
+    with JsonLinesWriter(path) as writer:
+        with pytest.raises(ValueError):
+            writer.write({"n": 1})
+
+    assert path.read_text(encoding="utf-8") == ""
+
+
+def test_a_very_deep_record_is_either_written_whole_or_refused(tmp_path: Path) -> None:
+    """The depth that fails depends on the machine, so accept both outcomes and nothing else."""
+    path = tmp_path / "records.jsonl"
+
+    with JsonLinesWriter(path) as writer:
+        try:
+            writer.write(_nested_dict(200_000))
+        except ValueError:
+            pass
+
+    assert path.read_text(encoding="utf-8").count("\n") <= 1
