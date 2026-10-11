@@ -63,11 +63,34 @@ def sanitize(text: str) -> str:
     return text.encode("utf-8", "replace").decode("utf-8")
 
 
+def error_entry(stage: str, exc: Exception) -> dict:
+    return {"stage": stage, "type": type(exc).__name__, "message": sanitize(str(exc))}
+
+
+def input_failure(source: str, exc: Exception) -> tuple[dict, list[dict]]:
+    """Stand in for an event that could not become a record, so the loop still writes a line."""
+    return {"source": sanitize(source)}, [error_entry("input", exc)]
+
+
+def fallback_record(record: dict, exc: Exception, *, keep_base: bool) -> dict:
+    """Build the record to write when the full record failed to write.
+
+    The first fallback keeps the base fields. The last one keeps only a sanitized source,
+    so it cannot fail.
+    """
+    if keep_base:
+        output = {key: value for key, value in record.items() if key not in ENRICHMENT_FIELDS}
+    else:
+        output = {"source": sanitize(str(record.get("source", "")))}
+    output.update(default_enrichment())
+    output["reason"] = "record could not be written"
+    output["processing_errors"].append(error_entry("output", exc))
+    return output
+
+
 def _fail(output: dict, stage: str, exc: Exception) -> None:
     """Record the error and take back whatever the stage wrote, because it can fail halfway."""
-    output["processing_errors"].append(
-        {"stage": stage, "type": type(exc).__name__, "message": sanitize(str(exc))}
-    )
+    output["processing_errors"].append(error_entry(stage, exc))
     defaults = default_enrichment()
     for field in STAGE_FIELDS[stage]:
         output[field] = defaults[field]

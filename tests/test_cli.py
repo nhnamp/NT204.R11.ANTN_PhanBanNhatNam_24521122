@@ -121,7 +121,7 @@ def test_unknown_drop_removes_unsupported_packets_and_counts_them(
 
     lines = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
     assert [line["packet_id"] for line in lines] == [1, 2]
-    assert "dropped: 1" in capsys.readouterr().err
+    assert "dropped: 1" in capsys.readouterr().err.splitlines()
 
 
 def test_permission_error_exits_with_a_sudo_hint(
@@ -182,7 +182,8 @@ def test_the_summary_counts_every_status(
 
     assert run(config) == 0
 
-    summary = capsys.readouterr().err
+    # Compare whole lines: "partial: 0" is also the end of the line "preprocess partial: 0".
+    summary = capsys.readouterr().err.splitlines()
     assert "ok: 2" in summary
     assert "unsupported: 1" in summary
     assert "partial: 0" in summary
