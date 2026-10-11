@@ -3,7 +3,7 @@
 import pytest
 
 from ids.config import Config
-from ids.contract import ENRICHMENT_FIELDS, default_enrichment
+from ids.contract import ENRICHMENT_FIELDS, default_enrichment, empty_normalized
 from ids.enrich import Enricher
 
 RECORD = {"packet_id": 1, "timestamp": 1758441600.0, "status": "ok", "payload_hex": ""}
@@ -11,6 +11,20 @@ RECORD = {"packet_id": 1, "timestamp": 1758441600.0, "status": "ok", "payload_he
 
 def _enricher() -> Enricher:
     return Enricher(Config(None, None, "events.jsonl", "keep", None))
+
+
+def _keep(record: dict) -> dict:
+    """Stand in for the preprocessor with a record that the tracker can read."""
+    normalized = {
+        **empty_normalized(),
+        "timestamp": 1758441600.0,
+        "protocol": "TCP",
+        "src_ip": "10.0.0.1",
+        "dst_ip": "10.0.0.2",
+        "src_port": 40000,
+        "dst_port": 80,
+    }
+    return {"processing_action": "keep", "normalized": normalized}
 
 
 def _raise(record: dict) -> dict:
@@ -96,7 +110,7 @@ def test_a_failing_tracker_keeps_the_record_whole_and_records_the_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     enricher = _enricher()
-    monkeypatch.setattr(enricher, "_preprocess", lambda record: {"processing_action": "keep"})
+    monkeypatch.setattr(enricher, "_preprocess", _keep)
     monkeypatch.setattr(enricher, "_track", _raise)
 
     output, exported = enricher.process(RECORD)
@@ -159,7 +173,7 @@ def test_a_stage_that_fails_halfway_leaves_none_of_its_fields_behind(
     monkeypatch: pytest.MonkeyPatch, make_stage, stage: str
 ) -> None:
     enricher = _enricher()
-    monkeypatch.setattr(enricher, "_preprocess", lambda record: {"processing_action": "keep"})
+    monkeypatch.setattr(enricher, "_preprocess", _keep)
     broken = make_stage(stage)
     if stage == "decoder":
         monkeypatch.setattr(enricher, "_decode", broken)
@@ -174,13 +188,14 @@ def test_a_stage_that_fails_halfway_leaves_none_of_its_fields_behind(
     for name in OWN_FIELDS[stage]:
         expected = "preprocessor failed" if (stage, name) == ("preprocessor", "reason") else defaults[name]
         assert output[name] == expected
+    assert [error["stage"] for error in output["processing_errors"]] == [stage]
 
 
 def test_flows_that_left_the_table_are_kept_when_the_tracker_result_fails_to_merge(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     enricher = _enricher()
-    monkeypatch.setattr(enricher, "_preprocess", lambda record: {"processing_action": "keep"})
+    monkeypatch.setattr(enricher, "_preprocess", _keep)
     left_the_table = [{"flow_id": "tcp-1"}]
     monkeypatch.setattr(enricher, "_track", lambda record: ({"surprise": 1}, left_the_table))
 

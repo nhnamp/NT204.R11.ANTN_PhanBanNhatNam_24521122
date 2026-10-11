@@ -52,7 +52,7 @@ class Enricher:
         return output, exported
 
     def flush(self) -> list[dict]:
-        return []
+        return self._tracker.flush()
 
     def _update_flow(self, record: dict) -> tuple[dict, list[dict]]:
         flow_id, direction, exported = self._tracker.update(record["normalized"])
