@@ -1,0 +1,8 @@
+{}
+[]
+"text"
+{not json
+{"timestamp": 1758441600.0, "network": {"src_ip": "2001:db8::1", "dst_ip": "10.0.0.2", "frag_offset": 0}, "transport": {"protocol": "TCP", "src_port": 40000, "dst_port": 70000}, "app_protocol": "HTTP", "status": "ok"}
+{"timestamp": true, "network": {"src_ip": "2001:db8::1", "dst_ip": "10.0.0.2", "frag_offset": 0}, "transport": {"protocol": "TCP", "src_port": 40000, "dst_port": 80, "flags": ["SYN"]}, "app_protocol": "HTTP", "status": "ok"}
+{"timestamp": "9999-12-31T23:59:59", "network": {"src_ip": "2001:db8::1", "dst_ip": "10.0.0.2", "frag_offset": 0}, "transport": {"protocol": "TCP", "src_port": 40000, "dst_port": 80, "flags": ["SYN"]}, "app_protocol": "HTTP", "status": "ok"}
+{"timestamp": 1758441600.0, "network": null, "transport": null, "app_protocol": "UNKNOWN", "status": "unsupported"}

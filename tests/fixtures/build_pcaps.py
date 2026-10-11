@@ -1,6 +1,7 @@
 """Generate the PCAP fixtures that the tests read."""
 
 import base64
+import json
 import random
 import struct
 from pathlib import Path
@@ -24,6 +25,7 @@ from scapy.all import (
 
 FIXTURE_DIR = Path(__file__).parent
 MALFORMED_DIR = FIXTURE_DIR / "malformed"
+EVENTS_DIR = FIXTURE_DIR / "events"
 BASE_TIME = 1758441600.0
 CLIENT_MAC = "02:00:00:00:00:01"
 SERVER_MAC = "02:00:00:00:00:02"
@@ -448,6 +450,19 @@ def invalid_utf8_packets() -> list[Packet]:
     ]
 
 
+def normalization_packets() -> list[Packet]:
+    """Build the packets of T05: two GET requests that differ in case and format, and a DNS query in capitals."""
+    first = (
+        b"GET /a/%2e%2e/b?q=1 HTTP/1.1\r\n"
+        b"HOST: EXAMPLE.com.:80\r\n"
+        b"X-Test: a\r\n"
+        b"x-TEST: b\r\n\r\n"
+    )
+    second = b"GET /b?q=1 HTTP/1.1\r\nhost: example.com\r\nx-test: a\r\nx-test: b\r\n\r\n"
+    query = bytes(DNS(id=0x1234, rd=1, qd=DNSQR(qname="WWW.Example.COM", qtype="A")))
+    return [_http_frame(True, first, 1001), _http_frame(True, second, 1201), _dns_udp_frame(query)]
+
+
 FIXTURES = {
     "basic.pcap": basic_packets,
     "tcp_handshake.pcap": tcp_handshake_packets,
@@ -472,6 +487,7 @@ FIXTURES = {
     "http_percent.pcap": http_percent_packets,
     "http_entity.pcap": http_entity_packets,
     "invalid_utf8.pcap": invalid_utf8_packets,
+    "normalization.pcap": normalization_packets,
 }
 
 
@@ -601,6 +617,57 @@ def build_malformed() -> None:
     (MALFORMED_DIR / "19_not_a_pcap.txt").write_text("this file is not a capture file\n")
 
 
+def _event(**changes: object) -> dict:
+    """Build a minimal event, as an events file can hold it."""
+    event = {
+        "timestamp": BASE_TIME,
+        "network": {"src_ip": "2001:db8::1", "dst_ip": "10.0.0.2", "frag_offset": 0},
+        "transport": {"protocol": "TCP", "src_port": 40000, "dst_port": 80, "flags": ["SYN"]},
+        "app_protocol": "HTTP",
+        "status": "ok",
+    }
+    event.update(changes)
+    return event
+
+
+def events_files() -> dict[str, list[bytes]]:
+    """Build the lines of the events files, keyed by file name."""
+
+    def lines(*events: dict) -> list[bytes]:
+        return [json.dumps(event).encode() for event in events]
+
+    variant = _event(
+        timestamp="2025-09-21T08:00:00",
+        network={"src_ip": "2001:DB8::1", "dst_ip": "10.0.0.2"},
+        transport={"protocol": "tcp", "src_port": "40000", "dst_port": "80", "flags": ["syn"]},
+        app_protocol="Http",
+    )
+    leading_zero = _event(network={"src_ip": "010.0.0.1", "dst_ip": "10.0.0.2"})
+    bad_port = _event(transport={"protocol": "TCP", "src_port": 40000, "dst_port": 70000})
+    arp_like = _event(network=None, transport=None, app_protocol="UNKNOWN", status="unsupported")
+    return {
+        "protocol_and_ip.jsonl": lines(_event(), variant, leading_zero),
+        "missing_fields.jsonl": lines(
+            {"timestamp": BASE_TIME, "network": _event()["network"], "transport": _event()["transport"]},
+            {"timestamp": BASE_TIME},
+        ),
+        "invalid_events.jsonl": [
+            b"{}",
+            b"[]",
+            b'"text"',
+            b"{not json",
+            *lines(bad_port, _event(timestamp=True), _event(timestamp="9999-12-31T23:59:59"), arp_like),
+        ],
+    }
+
+
+def build_events() -> None:
+    """Write the events files, one JSON object per line."""
+    EVENTS_DIR.mkdir(exist_ok=True)
+    for name, lines in events_files().items():
+        (EVENTS_DIR / name).write_bytes(b"\n".join(lines) + b"\n")
+
+
 def write_fixture(path: Path, packets: list[Packet]) -> None:
     """Write packets with fixed times, so the file is reproducible."""
     for index, packet in enumerate(packets):
@@ -615,6 +682,7 @@ def build_all() -> None:
         everything.extend(build_packets())
     write_fixture(FIXTURE_DIR / "all.pcap", everything)
     build_malformed()
+    build_events()
 
 
 if __name__ == "__main__":

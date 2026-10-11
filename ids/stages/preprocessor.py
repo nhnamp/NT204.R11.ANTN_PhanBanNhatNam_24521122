@@ -20,6 +20,10 @@ def preprocess_record(record: dict) -> dict:
     normalized = empty_normalized()
     if not isinstance(record, dict):
         return _result("invalid", "record is not an object", normalized)
+    # The events source stands in for a line it cannot read with a record that holds only a source.
+    errors = record.get("processing_errors")
+    if isinstance(errors, list) and any(isinstance(e, dict) and e.get("type") == "invalid_record" for e in errors):
+        return _result("invalid", "input line is not a usable event", normalized)
 
     seconds = _timestamp(record)
     if seconds is not None:

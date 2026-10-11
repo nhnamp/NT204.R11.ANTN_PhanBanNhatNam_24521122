@@ -65,12 +65,14 @@ def _with(part: str, **changes: object) -> dict:
         (_with("network", dst_ip="fe80::1%eth0"), "partial", "skip_flow", "address is missing or invalid"),
         (_record(timestamp=...), "invalid", "skip_flow", "timestamp is missing or unusable"),
         (["not", "an", "object"], "invalid", "skip_flow", "record is not an object"),
+        (_record(processing_errors=[{"type": "invalid_record"}]), "invalid", "skip_flow", "input line is not a usable event"),
+        (_record(processing_errors=[{"type": "limit"}, "text"]), "valid", "keep", None),
     ],
     ids=[
         "valid", "no-status", "no-errors", "lower-case-protocol", "port-zero", "epoch-zero", "last-second", "bool-offset",
         "base-partial", "base-unlisted-text", "base-unlisted-number",
         "no-layers", "icmp", "protocol-missing", "protocol-number", "fragment-offset", "fragment-error",
-        "port-range", "ip-zone", "no-timestamp", "not-an-object",
+        "port-range", "ip-zone", "no-timestamp", "not-an-object", "input-error", "other-error",
     ],
 )
 def test_validation(record: dict, status: str, action: str, reason: str | None) -> None:
