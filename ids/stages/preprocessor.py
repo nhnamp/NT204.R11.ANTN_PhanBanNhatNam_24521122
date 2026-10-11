@@ -9,6 +9,9 @@ from ids.contract import empty_normalized
 MAX_TIMESTAMP = 4_102_444_800
 TRACKED_PROTOCOLS = ("TCP", "UDP")
 MAX_PORT = 65_535
+TCP_FLAGS = ("FIN", "SYN", "RST", "PSH", "ACK", "URG", "ECE", "CWR")
+APP_PROTOCOLS = ("HTTP", "DNS", "SMTP", "UNKNOWN")
+DETECTION_METHODS = ("payload", "port+payload", "port", "none")
 TOKEN_LIMIT = 32
 PORT_TEXT = re.compile(r"[0-9]{1,5}")
 
@@ -23,6 +26,7 @@ def preprocess_record(record: dict) -> dict:
         normalized["timestamp"] = seconds
         normalized["timestamp_iso"] = datetime.fromtimestamp(seconds, tz=timezone.utc).isoformat()
     problems = _fill_flow_fields(record, normalized)
+    _fill_other_fields(record, normalized)
 
     if seconds is None:
         return _result("invalid", "timestamp is missing or unusable", normalized)
@@ -132,3 +136,98 @@ def _port(value: object) -> int | None:
     else:
         return None
     return number if 0 <= number <= MAX_PORT else None
+
+
+def _fill_other_fields(record: dict, normalized: dict) -> None:
+    transport = record.get("transport")
+    if isinstance(transport, dict) and isinstance(transport.get("flags"), list):
+        names = {flag.upper() for flag in transport["flags"] if isinstance(flag, str)}
+        normalized["tcp_flags"] = [flag for flag in TCP_FLAGS if flag in names]
+    normalized["length"] = _count(record.get("length"))
+    normalized["payload_len"] = _count(record.get("payload_len"))
+    protocol = record.get("app_protocol")
+    protocol = protocol.upper() if isinstance(protocol, str) else None
+    normalized["app_protocol"] = protocol if protocol in APP_PROTOCOLS else "UNKNOWN"
+    detection = record.get("detection")
+    method = detection.get("method") if isinstance(detection, dict) else None
+    normalized["detection_method"] = method if method in DETECTION_METHODS else None
+
+    application = record.get("application")
+    if not isinstance(application, dict):
+        return
+    if normalized["app_protocol"] == "HTTP":
+        normalized["host"] = _host(application.get("host"))
+        normalized["headers"] = _headers(application.get("headers"))
+        normalized["path"], normalized["query"] = _path_and_query(_target(record, application))
+    elif normalized["app_protocol"] == "DNS":
+        normalized["domains"] = _domains(application)
+
+
+def _count(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+
+
+def _host(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    host = value.strip().lower()
+    if host.startswith("[") and "]" in host:
+        host = host[1 : host.index("]")]
+    elif ":" in host:
+        name, _, port = host.partition(":")
+        host = name if port.isascii() and port.isdecimal() else host
+    host = host.removesuffix(".")
+    return _ip(host) or host or None
+
+
+def _headers(value: object) -> dict:
+    merged: dict[str, list[str]] = {}
+    if not isinstance(value, dict):
+        return {}
+    for name, content in value.items():
+        values = content if isinstance(content, list) else [content]
+        texts = [item.strip() for item in values if isinstance(item, str)]
+        if isinstance(name, str) and texts:
+            merged.setdefault(name.strip().lower(), []).extend(texts)
+    return {key: texts[0] if len(texts) == 1 else texts for key, texts in merged.items()}
+
+
+def _domains(application: dict) -> list[str]:
+    names = []
+    for section in ("questions", "answers"):
+        entries = application.get(section)
+        for entry in entries if isinstance(entries, list) else []:
+            name = entry.get("name") if isinstance(entry, dict) else None
+            if isinstance(name, str) and name.lower().removesuffix("."):
+                names.append(name.lower().removesuffix("."))
+    return list(dict.fromkeys(names))
+
+
+def _target(record: dict, application: dict) -> object:
+    decoded = record.get("decoded")
+    for item in decoded if isinstance(decoded, list) else []:
+        if isinstance(item, dict) and item.get("field") == "http.target" and isinstance(item.get("value"), str):
+            return item["value"]
+    return application.get("target")
+
+
+def _path_and_query(target: object) -> tuple[str | None, str | None]:
+    if not isinstance(target, str) or not target.startswith("/"):
+        return None, None
+    path, separator, query = target.partition("?")
+    return _remove_dot_segments(path), query if separator else None
+
+
+def _remove_dot_segments(path: str) -> str:
+    """Apply RFC 3986 section 5.2.4. posixpath.normpath would also merge "//", which changes the meaning."""
+    segments = path.split("/")[1:]
+    kept: list[str] = []
+    for segment in segments:
+        if segment == "..":
+            if kept:
+                kept.pop()
+        elif segment != ".":
+            kept.append(segment)
+    if segments[-1] in (".", ".."):
+        kept.append("")
+    return "/" + "/".join(kept)

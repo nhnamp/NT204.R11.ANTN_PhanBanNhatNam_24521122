@@ -43,6 +43,7 @@ def _with(part: str, **changes: object) -> dict:
     [
         (_record(), "valid", "keep", None),
         (_record(status=...), "valid", "keep", None),
+        (_record(errors=...), "valid", "keep", None),
         (_with("transport", protocol="udp"), "valid", "keep", None),
         (_with("transport", src_port=0), "valid", "keep", None),
         (_record(timestamp=0), "valid", "keep", None),
@@ -66,7 +67,7 @@ def _with(part: str, **changes: object) -> dict:
         (["not", "an", "object"], "invalid", "skip_flow", "record is not an object"),
     ],
     ids=[
-        "valid", "no-status", "lower-case-protocol", "port-zero", "epoch-zero", "last-second", "bool-offset",
+        "valid", "no-status", "no-errors", "lower-case-protocol", "port-zero", "epoch-zero", "last-second", "bool-offset",
         "base-partial", "base-unlisted-text", "base-unlisted-number",
         "no-layers", "icmp", "protocol-missing", "protocol-number", "fragment-offset", "fragment-error",
         "port-range", "ip-zone", "no-timestamp", "not-an-object",
@@ -151,6 +152,13 @@ def test_ip_forms(value: object, expected: str | None) -> None:
     assert normalized["src_ip"] == expected
 
 
+def test_a_record_without_optional_fields_gets_null_and_empty_values() -> None:
+    expected = {**empty_normalized(), "timestamp": TIMESTAMP, "timestamp_iso": "2025-09-21T08:00:00+00:00"}
+    expected.update(protocol="TCP", src_ip="10.0.0.1", dst_ip="10.0.0.2", src_port=40000, dst_port=80)
+
+    assert _normalized(_record(errors=...)) == expected
+
+
 @pytest.mark.parametrize(
     "record",
     [_record(), _record(transport=None, network=None), _record(timestamp=...), "text", None],
@@ -164,3 +172,166 @@ def test_the_reason_holds_a_short_token_of_a_long_value() -> None:
     reason = preprocess_record(_with("transport", protocol="X" * 1_000_000))["reason"]
 
     assert len(reason) < 100
+
+
+def _http(application: dict | None = None, **changes: object) -> dict:
+    application = {"host": "example.com", "target": "/index.html", "headers": {"host": "example.com"}, **(application or {})}
+    return _record(**{"app_protocol": "HTTP", "application": application, **changes})
+
+
+def _dns(application: dict) -> dict:
+    return _record(app_protocol="DNS", application=application)
+
+
+def _normalized(record: dict) -> dict:
+    return preprocess_record(record)["normalized"]
+
+
+@pytest.mark.parametrize(
+    ("host", "expected"),
+    [
+        ("EXAMPLE.com.:80", "example.com"),
+        ("[::1]:80", "::1"),
+        ("::1", "::1"),
+        ("[2001:DB8::1]", "2001:db8::1"),
+        ("1.2.3.4:8080", "1.2.3.4"),
+        (" Example.COM ", "example.com"),
+        ("example.com:80:80", "example.com:80:80"),
+        ("example.com:٨٠", "example.com:٨٠"),
+        ("example.com..", "example.com."),
+        ("[0:0:0:0:0:0:0:1]:80", "::1"),
+        ("[::1", "[::1"),
+        (".", None),
+        (80, None),
+    ],
+)
+def test_host_forms(host: object, expected: str | None) -> None:
+    assert _normalized(_http({"host": host}))["host"] == expected
+
+
+@pytest.mark.parametrize(
+    ("target", "path", "query"),
+    [
+        ("/a/./b/../c", "/a/c", None),
+        ("/a/b/c/./../../g", "/a/g", None),
+        ("/a/b/..", "/a/", None),
+        ("/a/.", "/a/", None),
+        ("/../a", "/a", None),
+        ("//x?y=1", "//x", "y=1"),
+        ("/A/b?", "/A/b", ""),
+        ("/a?b=c?d", "/a", "b=c?d"),
+        ("*", None, None),
+        ("http://example.com/", None, None),
+        (None, None, None),
+    ],
+)
+def test_path_and_query(target: object, path: str | None, query: str | None) -> None:
+    normalized = _normalized(_http({"target": target}))
+
+    assert (normalized["path"], normalized["query"]) == (path, query)
+
+
+def test_the_decoded_target_wins_over_the_raw_target() -> None:
+    decoded = ["text", {"field": "http.target", "value": None}, {"field": "http.target", "value": "/a/../b?x=1"}]
+
+    normalized = _normalized(_http({"target": "/a/%2e%2e/b?x=1"}, decoded=decoded))
+
+    assert (normalized["path"], normalized["query"]) == ("/b", "x=1")
+
+
+def test_a_failed_decoded_target_falls_back_to_the_raw_target() -> None:
+    decoded = [{"field": "http.target", "value": None, "status": "failed"}]
+
+    assert _normalized(_http({"target": "/a/./b"}, decoded=decoded))["path"] == "/a/b"
+
+
+def test_header_names_that_differ_in_case_merge_in_order() -> None:
+    headers = {"Content-TYPE": "a", "content-type": ["b", " c "], " X ": " v ", "Bad": 5, 3: "x"}
+
+    assert _normalized(_http({"headers": headers}))["headers"] == {"content-type": ["a", "b", "c"], "x": "v"}
+
+
+def test_dns_names_are_lower_case_without_a_dot_and_without_duplicates() -> None:
+    application = {
+        "questions": [{"name": "WWW.Example.com."}, {"name": 5}, "text"],
+        "answers": [{"name": "example.com."}, {"name": "www.example.com"}, {"name": ""}],
+    }
+
+    assert _normalized(_dns(application))["domains"] == ["www.example.com", "example.com"]
+
+
+@pytest.mark.parametrize(
+    ("record", "key", "empty"),
+    [
+        (_record(app_protocol="SMTP", application={"host": "x.com", "target": "/a", "headers": {"a": "b"}}), "host", None),
+        (_record(app_protocol="SMTP", application={"host": "x.com", "target": "/a", "headers": {"a": "b"}}), "headers", {}),
+        (_record(app_protocol="SMTP", application={"host": "x.com", "target": "/a", "headers": {"a": "b"}}), "path", None),
+        (_http({"questions": [{"name": "x.com"}]}), "domains", []),
+    ],
+    ids=["smtp-host", "smtp-headers", "smtp-path", "http-domains"],
+)
+def test_application_fields_are_read_only_for_their_protocol(record: dict, key: str, empty: object) -> None:
+    assert _normalized(record)[key] == empty
+
+
+@pytest.mark.parametrize(
+    ("flags", "expected"),
+    [(["ack", "SYN", "bogus", 5], ["SYN", "ACK"]), (["FIN", "CWR", "ECE"], ["FIN", "ECE", "CWR"]), ("SYN", []), (None, [])],
+)
+def test_tcp_flags_come_in_a_fixed_order(flags: object, expected: list[str]) -> None:
+    assert _normalized(_with("transport", flags=flags))["tcp_flags"] == expected
+
+
+@pytest.mark.parametrize(
+    ("changes", "key", "expected"),
+    [
+        ({"app_protocol": "http"}, "app_protocol", "HTTP"),
+        ({"app_protocol": "FTP"}, "app_protocol", "UNKNOWN"),
+        ({"app_protocol": None}, "app_protocol", "UNKNOWN"),
+        ({"detection": {"method": "port+payload"}}, "detection_method", "port+payload"),
+        ({"detection": {"method": "guess"}}, "detection_method", None),
+        ({"detection": None}, "detection_method", None),
+        ({"length": 54}, "length", 54),
+        ({"length": 0}, "length", 0),
+        ({"length": True}, "length", None),
+        ({"payload_len": -1}, "payload_len", None),
+        ({"payload_len": "5"}, "payload_len", None),
+    ],
+)
+def test_other_fields(changes: dict, key: str, expected: object) -> None:
+    assert _normalized(_record(**changes))[key] == expected
+
+
+def test_records_in_different_case_and_format_give_the_same_normalized_view() -> None:
+    plain = _http({"headers": {"content-type": "text/html"}, "target": "/a/b"})
+    plain["network"] = {"src_ip": "2001:db8::1", "dst_ip": "10.0.0.2"}
+    plain["transport"] = {"protocol": "TCP", "src_port": 40000, "dst_port": 80, "flags": ["SYN"]}
+    other = _http(
+        {"host": "EXAMPLE.com.:80", "headers": {"Content-TYPE": " text/html "}, "target": "/a/./c/../b"},
+        app_protocol="Http", timestamp="2025-09-21T08:00:00",
+    )
+    other["network"] = {"src_ip": "2001:DB8::1", "dst_ip": "10.0.0.2"}
+    other["transport"] = {"protocol": "tcp", "src_port": "40000", "dst_port": "80", "flags": ["syn"]}
+
+    assert _normalized(other) == _normalized(plain)
+
+
+def _case_variants(count: int) -> dict[str, str]:
+    base = "abcdefghijklmnop"
+    return {"".join(c.upper() if (i >> k) & 1 else c for k, c in enumerate(base)): "v" for i in range(count)}
+
+
+@pytest.mark.parametrize(
+    "record",
+    [
+        _dns({"questions": [{"name": f"a{i}.com"} for i in range(50_000)]}),
+        _http({"headers": _case_variants(65_000)}),
+    ],
+    ids=["many-domains", "many-header-case-variants"],
+)
+def test_a_large_application_object_is_fast(record: dict) -> None:
+    started = time.perf_counter()
+
+    preprocess_record(record)
+
+    assert time.perf_counter() - started < 1.0
