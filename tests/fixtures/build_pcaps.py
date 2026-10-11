@@ -1,5 +1,6 @@
 """Generate the PCAP fixtures that the tests read."""
 
+import base64
 import random
 import struct
 from pathlib import Path
@@ -257,6 +258,40 @@ def smtp_session_packets() -> list[Packet]:
     ]
 
 
+SMTP_HEADERS = (
+    b"From: alice@example.com\r\nTo: bob@example.com\r\nSubject: NT204\r\n"
+    b"MIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n"
+)
+SMTP_BASE64_MESSAGE = (
+    SMTP_HEADERS
+    + b"Content-Transfer-Encoding: base64\r\n\r\n"
+    + base64.encodebytes("Xin chào Bob\r\n".encode("utf-8")).replace(b"\n", b"\r\n")
+    + b".\r\n"
+)
+SMTP_QUOTED_PRINTABLE_MESSAGE = (
+    SMTP_HEADERS
+    + b"Content-Transfer-Encoding: quoted-printable\r\n\r\n"
+    + b"caf=C3=A9 1+1=3D2, a long li=\r\nne\r\n"
+    + b".\r\n"
+)
+
+
+def smtp_mime_packets() -> list[Packet]:
+    """Build the dialogue of T03: a Base64 message, then a Quoted-Printable message."""
+    envelope = SMTP_DIALOGUE[3:9]
+    dialogue = (
+        SMTP_DIALOGUE[:9]
+        + [(True, SMTP_BASE64_MESSAGE), SMTP_DIALOGUE[10]]
+        + envelope
+        + [(True, SMTP_QUOTED_PRINTABLE_MESSAGE)]
+        + SMTP_DIALOGUE[10:]
+    )
+    return [
+        _smtp_frame(client_to_server, payload, 1001 + index * 100)
+        for index, (client_to_server, payload) in enumerate(dialogue)
+    ]
+
+
 def unknown_protocol_packets() -> list[Packet]:
     """Build one packet per unsupported case of TC-11, in a fixed order."""
     inner = IP(src="10.0.0.3", dst="10.0.0.4") / TCP(sport=40000, dport=80, flags="S")
@@ -426,6 +461,7 @@ FIXTURES = {
     "dns_cname.pcap": dns_cname_packets,
     "dns_tcp.pcap": dns_tcp_packets,
     "smtp_session.pcap": smtp_session_packets,
+    "smtp_mime.pcap": smtp_mime_packets,
     "unknown_protocols.pcap": unknown_protocol_packets,
     "bonus_http_8080.pcap": bonus_http_8080_packets,
     "bonus_http_3000.pcap": bonus_http_3000_packets,

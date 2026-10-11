@@ -36,11 +36,14 @@ def _items(record: dict) -> dict[str, tuple]:
         ("http_entity.pcap", 2, "ok", {"http.body": ("<b>", "ok")}),
         ("invalid_utf8.pcap", 1, "partial", {"payload": (f"plain text {REPLACED}{REPLACED}{REPLACED} more plain text", "partial")}),
         ("invalid_utf8.pcap", 2, "partial", {"payload": (None, "partial")}),
+        ("smtp_mime.pcap", 9, "ok", {"mime.body": ("Xin chào Bob\r\n", "ok")}),
+        ("smtp_mime.pcap", 17, "ok", {"mime.body": ("café 1+1=2, a long line\r\n", "ok")}),
     ],
     ids=[
         "T01-percent-target", "T01-plus-in-query", "T01-form-body", "T01-bad-escape",
         "T02-entity-in-html", "T02-no-semicolon-kept", "T02-no-content-type",
         "T04-few-bad-bytes", "T04-random-binary",
+        "T03-base64", "T03-quoted-printable",
     ],
 )
 def test_fixture_packet_decodes_as_the_case_expects(name: str, index: int, status: str, items: dict) -> None:
