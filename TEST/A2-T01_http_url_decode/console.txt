@@ -1,0 +1,16 @@
+$ python main.py --pcap TEST/A2-T01_http_url_decode/input.pcap --output TEST/A2-T01_http_url_decode/output.jsonl
+packets read: 4
+events written: 4
+ok: 4
+partial: 0
+unsupported: 0
+malformed: 0
+other: 0
+preprocess valid: 4
+preprocess partial: 0
+preprocess invalid: 0
+preprocess other: 0
+dropped: 0
+flows written: 1
+elapsed: 0.002s
+exit code: 0
