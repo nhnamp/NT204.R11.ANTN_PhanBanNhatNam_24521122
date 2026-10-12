@@ -1,0 +1,17 @@
+$ python main.py --events TEST/A2-T06_missing_field/input.jsonl --output TEST/A2-T06_missing_field/output.jsonl
+packets read: 2
+events written: 2
+ok: 0
+partial: 0
+unsupported: 0
+malformed: 0
+other: 2
+preprocess valid: 1
+preprocess partial: 1
+preprocess invalid: 0
+preprocess other: 0
+dropped: 0
+flows written: 1
+elapsed: 0.003s
+exit code: 0
+
