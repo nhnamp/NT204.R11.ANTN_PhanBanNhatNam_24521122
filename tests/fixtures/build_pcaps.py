@@ -26,7 +26,10 @@ from scapy.all import (
 FIXTURE_DIR = Path(__file__).parent
 MALFORMED_DIR = FIXTURE_DIR / "malformed"
 EVENTS_DIR = FIXTURE_DIR / "events"
+CORPUS_DIR = EVENTS_DIR / "corpus"
 BASE_TIME = 1758441600.0
+# Year 2096. The preprocessor accepts a time up to year 2100, so this record reaches the flow tracker.
+FUTURE_TIME = 4_000_000_000.0
 CLIENT_MAC = "02:00:00:00:00:01"
 SERVER_MAC = "02:00:00:00:00:02"
 PCAP_MAGIC = 0xA1B2C3D4
@@ -834,6 +837,103 @@ def build_events() -> None:
     EVENTS_DIR.mkdir(exist_ok=True)
     for name, lines in events_files().items():
         (EVENTS_DIR / name).write_bytes(b"\n".join(lines) + b"\n")
+    CORPUS_DIR.mkdir(exist_ok=True)
+    for name, lines in corpus_files().items():
+        (CORPUS_DIR / f"{name}.jsonl").write_bytes(b"\n".join(lines) + b"\n")
+
+
+def _line(event: dict) -> bytes:
+    return json.dumps(event).encode()
+
+
+def _control_line() -> bytes:
+    """A good record after the bad one, so a test sees that the run went on."""
+    return _line(_event(timestamp=BASE_TIME + 1, transport={"protocol": "TCP", "src_port": 41000, "dst_port": 80, "flags": ["SYN"]}))
+
+
+def _transport(**changes: object) -> dict:
+    return _event(transport={**_event()["transport"], **changes})
+
+
+def corpus_files() -> dict[str, list[bytes]]:
+    """Build the bad record corpus, keyed by case name. The big cases are in `large_corpus_files`."""
+    enriched = {
+        "decode_status": "decoded",
+        "decoded": [],
+        "preprocess_status": "valid",
+        "processing_action": "keep",
+        "reason": None,
+        "normalized": {"protocol": "TCP"},
+        "flow_id": "tcp-old",
+        "direction": "forward",
+        "processing_errors": [{"stage": "decoder", "type": "limit", "message": "old"}],
+    }
+    wrong_types = {"decode_status": 5, "decoded": "x", "normalized": [], "flow_id": {}, "processing_errors": "x"}
+    reset = _transport(flags=["RST"])
+    bad_lines: dict[str, list[bytes]] = {
+        "01-empty-object": [b"{}"],
+        "02-empty-list": [b"[]"],
+        "03-string": [b'"text"'],
+        "04-not-json": [b"{not json"],
+        "05-timestamp-nan": [_line(_event(timestamp=float("nan")))],
+        "06-count-infinity": [_line(_event(payload_len=float("inf")))],
+        "07-timestamp-true": [_line(_event(timestamp=True))],
+        "08-timestamp-year-9999-number": [_line(_event(timestamp=253402300799.0))],
+        "08-timestamp-year-9999-text": [_line(_event(timestamp="9999-12-31T23:59:59"))],
+        "09-timestamp-1e300": [_line(_event(timestamp=1e300))],
+        "10-timestamp-negative": [_line(_event(timestamp=-1.0))],
+        "11-header-lone-surrogate": [_line(_event(application={"headers": {"Host": "\ud800"}}))],
+        "14-port-70000": [_line(_transport(src_port=70000))],
+        "14-port-minus-1": [_line(_transport(src_port=-1))],
+        "14-port-text": [_line(_transport(src_port="80"))],
+        "14-port-float": [_line(_transport(src_port=80.5))],
+        "14-port-true": [_line(_transport(src_port=True))],
+        "15-ip-leading-zero": [_line(_event(network={"src_ip": "010.0.0.1", "dst_ip": "10.0.0.2"}))],
+        "15-ip-zone": [_line(_event(network={"src_ip": "fe80::1%eth0", "dst_ip": "10.0.0.2"}))],
+        "15-ip-empty": [_line(_event(network={"src_ip": "", "dst_ip": "10.0.0.2"}))],
+        "15-ip-number": [_line(_event(network={"src_ip": 167772161, "dst_ip": "10.0.0.2"}))],
+        "16-payload-not-hex": [_line(_event(payload_hex="zz" * 8))],
+        "16-payload-odd-length": [_line(_event(payload_hex="abc"))],
+        "17-flags-text": [_line(_transport(flags="SYN"))],
+        "17-flags-number": [_line(_transport(flags=2))],
+        "17-flags-list-with-number": [_line(_transport(flags=["SYN", 2]))],
+        "18-target-number": [_line(_event(application={"target": 5}))],
+        "18-target-list": [_line(_event(application={"target": ["/a"]}))],
+        "19-headers-list": [_line(_event(application={"headers": []}))],
+        "20-domain-names-not-text": [
+            _line(
+                _event(
+                    app_protocol="DNS",
+                    application={"questions": [{"name": 5}, {"name": None}, {"name": ["a.example"]}], "answers": [{"name": 7}]},
+                )
+            )
+        ],
+        "22-replayed-enrichment": [_line(_event(**enriched))],
+        "22-replayed-enrichment-wrong-types": [_line(_event(**wrong_types))],
+    }
+    cases = {name: [*lines, _control_line()] for name, lines in bad_lines.items()}
+    # Two records at the same time on the same 5-tuple after a reset: the second SYN opens a flow with the same start time.
+    cases["21-same-time-after-reset"] = [_line(_event()), _line(reset), _line(_event()), _line(reset), _line(_event())]
+    # The record at `FUTURE_TIME` moves the clock of the flow tracker. The records after it have normal times.
+    udp = _transport(protocol="UDP", flags=[], src_port=50000, dst_port=53)
+    cases["23-future-timestamp"] = [
+        _line(_event(timestamp=FUTURE_TIME)),
+        _line(_transport(src_port=40001)),
+        _line({**udp, "timestamp": BASE_TIME + 2}),
+        _control_line(),
+    ]
+    return dict(sorted(cases.items()))
+
+
+def large_corpus_files() -> dict[str, list[bytes]]:
+    """Build the cases that are too big to commit. A test writes them to a temporary directory."""
+    return {
+        # Over the line limit of the events reader (1 MiB).
+        "12-line-of-2-mb": [b'{"a":"' + b"x" * 2_000_000 + b'"}', _control_line()],
+        "13-nesting-100000": [b"[" * 100_000 + b"]" * 100_000, _control_line()],
+        # Under the line limit and over the payload limit, so the decoder sees it. A line of 10 MB stops in the reader.
+        "16-payload-1-mb": [_line(_event(payload_hex="ab" * 500_000)), _control_line()],
+    }
 
 
 def write_fixture(path: Path, packets: list[Packet], offsets: list[float] | None = None) -> None:

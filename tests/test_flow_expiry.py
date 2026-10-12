@@ -88,6 +88,19 @@ def test_a_late_packet_does_not_put_an_older_flow_behind_a_newer_one() -> None:
     assert [flow["last_seen"] for flow in exported] == [5.0]
 
 
+def test_one_future_packet_ends_the_flows_of_the_other_table_but_not_the_flows_behind_it() -> None:
+    tracker = FlowTracker()
+
+    # The clock stays at 1000.0. The UDP flow expires at its next packet, and the TCP flow stands behind the future flow.
+    exported = _exported(
+        tracker,
+        _packet(1, 1000.0, "TCP"), _packet(2, 0.0, "TCP"), _packet(3, 0.0, "UDP"), _packet(2, 1.0, "TCP"), _packet(3, 1.0, "UDP"),
+    )
+
+    assert [(flow["protocol"], flow["packet_count"]) for flow in exported] == [("UDP", 1)]
+    assert sorted((flow["protocol"], flow["packet_count"]) for flow in tracker.flush()) == [("TCP", 1), ("TCP", 2), ("UDP", 1)]
+
+
 def test_flows_that_expire_together_leave_in_the_order_of_their_last_packet() -> None:
     tracker = FlowTracker()
 

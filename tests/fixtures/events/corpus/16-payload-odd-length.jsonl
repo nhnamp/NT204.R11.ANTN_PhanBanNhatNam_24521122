@@ -1,0 +1,2 @@
+{"timestamp": 1758441600.0, "network": {"src_ip": "2001:db8::1", "dst_ip": "10.0.0.2", "frag_offset": 0}, "transport": {"protocol": "TCP", "src_port": 40000, "dst_port": 80, "flags": ["SYN"]}, "app_protocol": "HTTP", "status": "ok", "payload_hex": "abc"}
+{"timestamp": 1758441601.0, "network": {"src_ip": "2001:db8::1", "dst_ip": "10.0.0.2", "frag_offset": 0}, "transport": {"protocol": "TCP", "src_port": 41000, "dst_port": 80, "flags": ["SYN"]}, "app_protocol": "HTTP", "status": "ok"}
