@@ -155,17 +155,19 @@ def http_response_packets() -> list[Packet]:
     return [_http_frame(False, payload)]
 
 
-def _dns_udp_frame(payload: bytes, client_to_server: bool = True, port: int = 53) -> Packet:
+def _dns_udp_frame(
+    payload: bytes, client_to_server: bool = True, port: int = 53, client_port: int = 40000
+) -> Packet:
     """Build one datagram that carries a DNS message."""
     if client_to_server:
         frame = Ether(src=CLIENT_MAC, dst=SERVER_MAC) / IP(
             src="10.0.0.1", dst="10.0.0.2", proto=17
         )
-        return frame / UDP(sport=40000, dport=port) / Raw(payload)
+        return frame / UDP(sport=client_port, dport=port) / Raw(payload)
     frame = Ether(src=SERVER_MAC, dst=CLIENT_MAC) / IP(
         src="10.0.0.2", dst="10.0.0.1", proto=17
     )
-    return frame / UDP(sport=port, dport=40000) / Raw(payload)
+    return frame / UDP(sport=port, dport=client_port) / Raw(payload)
 
 
 def dns_query_packets() -> list[Packet]:
@@ -220,6 +222,18 @@ def dns_tcp_packets() -> list[Packet]:
 def dns_udp_flow_packets() -> list[Packet]:
     """Build the query and the response of T10: one UDP flow, with the reversed 5-tuple in the reply."""
     return dns_query_packets() + dns_response_packets()
+
+
+def idle_timeout_packets() -> list[Packet]:
+    """Build three DNS exchanges: the first 5-tuple, a second one, and the first one again. FIXTURE_TIMES spaces them."""
+    exchanges = []
+    for client_port in (40000, 40001, 40000):
+        query, response = dns_query_packets()[0], dns_response_packets()[0]
+        exchanges += [
+            _dns_udp_frame(bytes(query[Raw]), client_port=client_port),
+            _dns_udp_frame(bytes(response[Raw]), client_to_server=False, client_port=client_port),
+        ]
+    return exchanges
 
 
 def _smtp_frame(
@@ -477,6 +491,7 @@ STATS_SERVER: Endpoint = ("10.0.0.2", 4444)
 # Offsets in seconds from BASE_TIME. A fixture without an entry uses BASE_TIME + index * 0.5.
 FIXTURE_TIMES = {
     "flow_stats.pcap": [0.0, 0.01, 0.02, 1.0, 1.1, 2.5, 2.6, 4.0, 4.1, 4.2],
+    "idle_timeout.pcap": [0.0, 0.5, 100.0, 100.5, 200.0, 200.5],
 }
 
 
@@ -640,6 +655,7 @@ FIXTURES = {
     "tcp_close_rst.pcap": tcp_close_rst_packets,
     "concurrent_flows.pcap": concurrent_flows_packets,
     "flow_stats.pcap": flow_stats_packets,
+    "idle_timeout.pcap": idle_timeout_packets,
 }
 
 

@@ -75,3 +75,16 @@ def test_the_flow_counters_equal_the_values_computed_from_the_packets(tmp_path: 
     expected = expected_flow_stats()
     assert {key: flow[key] for key in expected} == expected
     assert flow["state"] == "CLOSED"
+
+
+def test_idle_flows_leave_before_the_end_and_a_reused_5_tuple_gets_a_new_flow(tmp_path: Path) -> None:
+    records, flows = _run("idle_timeout.pcap", tmp_path)
+
+    assert [flow["end_reason"] for flow in flows] == ["idle_timeout", "idle_timeout", "end_of_input"]
+    assert [flow["start_time"] - flows[0]["start_time"] for flow in flows] == [0.0, 100.0, 200.0]
+    assert [flow["packet_count"] for flow in flows] == [2, 2, 2]
+    assert [flow["endpoint_a"]["port"] for flow in flows] == [40000, 40001, 40000]
+    assert len({flow["flow_id"] for flow in flows}) == 3
+    assert [record["flow_id"] for record in records] == [flow["flow_id"] for flow in flows for _ in range(2)]
+    assert [record["direction"] for record in records] == ["forward", "backward"] * 3
+
