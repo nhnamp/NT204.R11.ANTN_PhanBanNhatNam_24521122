@@ -54,6 +54,20 @@ Wireshark shows the same packet: `[PSH, ACK]` with `Len=20`, and a 20-byte Data 
 
 The first run of this case had no Application Protocol Detector, so the event had `detection=null`. The retest changes only this field. `app_protocol` stays `"UNKNOWN"`, because the payload `0123456789abcdefghij` is not an HTTP message, even on port 80. All network and transport fields are the same as in the first run.
 
+## Retest after Assignment 02
+
+The retest reruns the command of this case with the program of Assignment 02. The base fields are unchanged: every event has the same values and the same key order as in the committed output before the retest. The retest adds ten keys to each event: `payload_hex`, `decode_status`, `decoded`, `preprocess_status`, `processing_action`, `reason`, `normalized`, `flow_id`, `direction`, and `processing_errors`. `console.txt` shows the new summary lines.
+
+New values in this case:
+
+- `decode_status` is `not_applicable` and `decoded` is `[]` for the event, because nothing needs decoding.
+- `preprocess_status` is `valid`, `processing_action` is `keep`, and `reason` is `null` for the event.
+- The event has the `flow_id` `tcp-5f8ec36d79cc`, and `direction` is `forward`.
+- `processing_errors` is `[]`.
+- `decoded` is `[]`, because the payload is plain ASCII. `normalized.app_protocol` is `UNKNOWN`.
+
+The tables above describe the base fields and stay valid. The field `errors` is the parser list of Assignment 01. The new list `processing_errors` is separate. No Wireshark check is repeated, because no base field changed.
+
 ## Verdict
 
 PASS.
