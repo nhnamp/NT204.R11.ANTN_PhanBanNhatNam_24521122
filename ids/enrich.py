@@ -22,7 +22,9 @@ class Enricher:
         # Instance attributes, not module functions, so a test can replace one stage.
         self._decode = partial(decode_record, payload_limit=config.payload_limit)
         self._preprocess = preprocess_record
-        self._tracker = FlowTracker(tcp_timeout=config.tcp_timeout, udp_timeout=config.udp_timeout)
+        self._tracker = FlowTracker(
+            tcp_timeout=config.tcp_timeout, udp_timeout=config.udp_timeout, max_flows=config.max_flows
+        )
         self._track = self._update_flow
 
     def process(

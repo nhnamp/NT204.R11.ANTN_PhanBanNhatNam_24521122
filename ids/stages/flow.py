@@ -102,9 +102,14 @@ def next_step(state: str, flags: list[str], direction: str, fin_directions: tupl
 
 class FlowTracker:
     def __init__(
-        self, *, tcp_timeout: float = Config.tcp_timeout, udp_timeout: float = Config.udp_timeout
+        self,
+        *,
+        tcp_timeout: float = Config.tcp_timeout,
+        udp_timeout: float = Config.udp_timeout,
+        max_flows: int = Config.max_flows,
     ) -> None:
         self._timeouts = {"TCP": tcp_timeout, "UDP": udp_timeout}
+        self._max_flows = max_flows
         # Each table holds its flows in the order of their last packet: expiry reads only the front.
         self._tables: dict[str, OrderedDict[tuple, _Flow]] = {"TCP": OrderedDict(), "UDP": OrderedDict()}
         self._now = float("-inf")
@@ -122,6 +127,7 @@ class FlowTracker:
         key = tuple(sorted((seen.source, seen.destination)))
         flow = table.get(key)
         if flow is None:
+            self._make_room()
             flow = self._create(seen)
         forward = seen.source == flow.endpoint_a
         direction = "forward" if forward else "backward"
@@ -159,7 +165,7 @@ class FlowTracker:
         )
 
     def _expire(self) -> None:
-        """Move the flows that were idle for longer than their timeout to the pending exports."""
+        """Export the flows that were idle for longer than their timeout."""
         expired: list[tuple[tuple, _Flow]] = []
         for protocol, table in self._tables.items():
             for key, flow in table.items():
@@ -167,10 +173,21 @@ class FlowTracker:
                     break
                 expired.append((key, flow))
         expired.sort(key=lambda item: (item[1].last_seen, item[1].number))
+        self._release(expired, "idle_timeout")
+
+    def _make_room(self) -> None:
+        """Export the flow with the smallest last packet time when a new flow would pass the limit."""
+        if sum(len(table) for table in self._tables.values()) < self._max_flows:
+            return
+        # Only the front of each table is read: it is the oldest flow unless a late packet changed the order.
+        fronts = [next(iter(table.items())) for table in self._tables.values() if table]
+        self._release([min(fronts, key=lambda item: (item[1].last_seen, item[1].number))], "evicted")
+
+    def _release(self, flows: list[tuple[tuple, _Flow]], end_reason: str) -> None:
         # The records exist before the flows leave the table, so a failure here loses no flow.
-        records = [_record(flow, "idle_timeout") for _, flow in expired]
+        records = [_record(flow, end_reason) for _, flow in flows]
         self._pending.extend(records)
-        for key, flow in expired:
+        for key, flow in flows:
             del self._tables[flow.protocol][key]
 
     def _drain(self) -> list[dict]:

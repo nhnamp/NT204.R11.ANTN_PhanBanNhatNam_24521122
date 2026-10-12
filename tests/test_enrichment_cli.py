@@ -4,13 +4,14 @@ import json
 from pathlib import Path
 
 import pytest
-from scapy.all import Ether
+from scapy.all import Ether, rdpcap
 
 from ids.cli import _write_record, parse_args, run
 from ids.contract import ENRICHMENT_FIELDS
 from ids.enrich import Enricher
 from ids.events import Event
 from ids.output import JsonLinesWriter
+from ids.stages import flow as flow_module
 
 
 def _lines(path: Path) -> list[dict]:
@@ -183,6 +184,67 @@ def test_the_remaining_flows_are_written_when_the_run_stops_early(
     assert _run(*args, "--output", str(tmp_path / "out.jsonl"), "--flows-output", str(flows)) == 0
 
     assert _lines(flows)[-1] == {"flow_id": "last"}
+
+
+class _PacketsThenInterrupt:
+    def __init__(self, packets: list) -> None:
+        self._packets = packets
+
+    def describe(self) -> str:
+        return "live:lo0"
+
+    def __iter__(self):
+        yield from self._packets
+        raise KeyboardInterrupt
+
+
+def _interrupt_after(packets: int):
+    """Count the packets like the tracker does, and raise KeyboardInterrupt in the call after `packets` packets."""
+    count, calls = flow_module._count, []
+
+    def counting(*arguments: object) -> None:
+        calls.append(arguments)
+        if len(calls) > packets:
+            raise KeyboardInterrupt
+        count(*arguments)
+
+    return counting
+
+
+@pytest.mark.parametrize("stop", ["count", "interrupt in the source", "interrupt in the tracker"])
+def test_every_flow_of_the_packets_that_were_processed_is_written_once_when_the_run_stops_early(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, stop: str
+) -> None:
+    pcap = Path(__file__).parent / "fixtures" / "concurrent_flows.pcap"
+    args = ["--pcap", str(pcap)]
+    if stop == "count":
+        args += ["--count", "5"]
+    elif stop == "interrupt in the source":
+        monkeypatch.setattr("ids.cli._build_source", lambda config: _PacketsThenInterrupt(rdpcap(str(pcap))[:5]))
+        args = ["--interface", "lo0"]
+    else:
+        monkeypatch.setattr(flow_module, "_count", _interrupt_after(5))
+    output, flows = tmp_path / "out.jsonl", tmp_path / "flows.jsonl"
+
+    assert _run(*args, "--output", str(output), "--flows-output", str(flows)) == 0
+
+    events = _lines(output)
+    assert len(events) == 5
+    flow_ids = [flow["flow_id"] for flow in _lines(flows)]
+    assert sorted(flow_ids) == sorted({event["flow_id"] for event in events})
+    assert sum(flow["packet_count"] for flow in _lines(flows)) == 5
+
+
+def test_a_full_table_exports_evicted_flows_and_loses_no_packet(tmp_path: Path) -> None:
+    pcap = Path(__file__).parent / "fixtures" / "concurrent_flows.pcap"
+    output, flows = tmp_path / "out.jsonl", tmp_path / "flows.jsonl"
+
+    assert _run("--pcap", str(pcap), "--max-flows", "1", "--output", str(output), "--flows-output", str(flows)) == 0
+
+    exported = _lines(flows)
+    assert {flow["end_reason"] for flow in exported} == {"evicted", "end_of_input"}
+    assert sum(flow["packet_count"] for flow in exported) == len(_lines(output))
+    assert {event["flow_id"] for event in _lines(output)} == {flow["flow_id"] for flow in exported}
 
 
 def test_a_failing_flush_does_not_hide_the_interrupt_or_change_the_exit_code(
