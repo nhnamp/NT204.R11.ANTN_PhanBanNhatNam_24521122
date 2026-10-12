@@ -1,0 +1,70 @@
+# --unknown keep
+$ python main.py --pcap TEST/A2-T14_malformed_event/input/unknown_protocols.pcap --output TEST/A2-T14_malformed_event/output/unknown_protocols.jsonl --unknown keep
+packets read: 5
+events written: 5
+ok: 1
+partial: 0
+unsupported: 4
+malformed: 0
+other: 0
+preprocess valid: 1
+preprocess partial: 4
+preprocess invalid: 0
+preprocess other: 0
+dropped: 0
+flows written: 1
+elapsed: 0.002s
+exit code: 0
+
+$ python main.py --events TEST/A2-T14_malformed_event/input/invalid_events.jsonl --output TEST/A2-T14_malformed_event/output/invalid_events.jsonl --unknown keep
+packets read: 8
+events written: 8
+ok: 3
+partial: 0
+unsupported: 1
+malformed: 0
+other: 4
+preprocess valid: 0
+preprocess partial: 2
+preprocess invalid: 6
+preprocess other: 0
+dropped: 0
+flows written: 0
+elapsed: 0.003s
+exit code: 0
+
+# --unknown drop
+$ python main.py --pcap TEST/A2-T14_malformed_event/input/unknown_protocols.pcap --output TEST/A2-T14_malformed_event/output_drop/unknown_protocols.jsonl --unknown drop
+packets read: 5
+events written: 1
+ok: 1
+partial: 0
+unsupported: 0
+malformed: 0
+other: 0
+preprocess valid: 1
+preprocess partial: 0
+preprocess invalid: 0
+preprocess other: 0
+dropped: 4
+flows written: 1
+elapsed: 0.001s
+exit code: 0
+
+$ python main.py --events TEST/A2-T14_malformed_event/input/invalid_events.jsonl --output TEST/A2-T14_malformed_event/output_drop/invalid_events.jsonl --unknown drop
+packets read: 8
+events written: 1
+ok: 1
+partial: 0
+unsupported: 0
+malformed: 0
+other: 0
+preprocess valid: 0
+preprocess partial: 1
+preprocess invalid: 0
+preprocess other: 0
+dropped: 7
+flows written: 0
+elapsed: 0.001s
+exit code: 0
+
