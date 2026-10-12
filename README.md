@@ -149,33 +149,9 @@ Exit codes:
 
 ## 4. Architecture
 
-```text
- Live capture (--interface)    PCAP import (--pcap)         Events file (--events)
- LiveSource: sniff in a        PcapSource: PcapReader,      EventFileSource: one JSON object
- thread                        one packet at a time         for each line, guarded
-            └───────────────┬────────┘                                  │
-                            ▼                                           │
-                 Pipeline.process(packet) → Event                       │
-                   ├─ parse_ipv4            → event.network             │
-                   ├─ parse_transport       → event.transport, payload  │
-                   ├─ detect_app_protocol   → event.app_protocol, event.detection
-                   ├─ parse_http / parse_dns / parse_smtp → event.application
-                   └─ errors and status     → event.errors, event.status
-                 event.to_dict()  ───────────────┬──────────────────────┘
-                                                 ▼   the same loop in cli.run
-                                  Enricher.process(record)
-                                    0. remove old enrichment fields (replay rule)
-                                    1. decode_record       → decode_status, decoded
-                                    2. preprocess_record   → preprocess_status, processing_action,
-                                                             reason, normalized
-                                    3. FlowTracker.update  → flow_id, direction
-                                       (only when processing_action = keep)
-                                                 │
-                              ┌──────────────────┴─────────────────┐
-                              ▼                                    ▼
-                JsonLinesWriter (--output)           JsonLinesWriter (--flows-output)
-                one line for each record             one line for each flow that left
-```
+![Architecture of the IDS. Live capture and PCAP import feed Pipeline.process. The events file skips it. The Enricher runs the Decoder, the Preprocessor, and the Flow Tracker. Two writers save the events and the flows.](images/architecture.svg)
+
+The events file source skips `Pipeline.process`, because its records are already `dict` values.
 
 | Module | Role |
 |---|---|
