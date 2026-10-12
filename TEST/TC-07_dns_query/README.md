@@ -63,6 +63,20 @@ python main.py --pcap TEST/TC-07_dns_query/input.pcap --output TEST/TC-07_dns_qu
 
 Wireshark shows the same query: `Standard query 0x1234 A example.com`, flags `0x0100` (recursion desired), 1 question and 0 records in the other sections, and the question `example.com`, type A, class IN. Its UDP length is 37, equal to the 8-byte UDP header plus the 29-byte message.
 
+## Retest after Assignment 02
+
+The retest reruns the command of this case with the program of Assignment 02. The base fields are unchanged: every event has the same values and the same key order as in the committed output before the retest. The retest adds ten keys to each event: `payload_hex`, `decode_status`, `decoded`, `preprocess_status`, `processing_action`, `reason`, `normalized`, `flow_id`, `direction`, and `processing_errors`. `console.txt` shows the new summary lines.
+
+New values in this case:
+
+- `decode_status` is `not_applicable` and `decoded` is `[]` for the event, because nothing needs decoding.
+- `preprocess_status` is `valid`, `processing_action` is `keep`, and `reason` is `null` for the event.
+- The event has the `flow_id` `udp-499d79bf977b`, and `direction` is `forward`.
+- `processing_errors` is `[]`.
+- `normalized.domains` is `["example.com"]`, and `normalized.protocol` is `UDP`.
+
+The tables above describe the base fields and stay valid. The field `errors` is the parser list of Assignment 01. The new list `processing_errors` is separate. No Wireshark check is repeated, because no base field changed.
+
 ## Verdict
 
 PASS.
