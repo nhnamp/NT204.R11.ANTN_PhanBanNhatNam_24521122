@@ -61,6 +61,20 @@ Except for `source`, `output.jsonl` is the same as the output of TC-09, because 
 
 Wireshark shows the same responses: codes 220, 250, 354, and 221 with the same text. For packet 3 it shows 4 response lines with code 250, and the first 3 lines have the `-` separator.
 
+## Retest after Assignment 02
+
+The retest reruns the command of this case with the program of Assignment 02. The base fields are unchanged: every event has the same values and the same key order as in the committed output before the retest. The retest adds ten keys to each event: `payload_hex`, `decode_status`, `decoded`, `preprocess_status`, `processing_action`, `reason`, `normalized`, `flow_id`, `direction`, and `processing_errors`. `console.txt` shows the new summary lines.
+
+New values in this case:
+
+- `decode_status` is `not_applicable` and `decoded` is `[]` for all 13 events, because nothing needs decoding.
+- `preprocess_status` is `valid`, `processing_action` is `keep`, and `reason` is `null` for all 13 events.
+- All events have the `flow_id` `tcp-f18001be8382`, and `direction` is `forward` for 7 events and `backward` for 6 events.
+- `processing_errors` is `[]`.
+- `normalized.app_protocol` equals `app_protocol` of each event: `SMTP` for 12 events and `UNKNOWN` for packet 10.
+
+The tables above describe the base fields and stay valid. The field `errors` is the parser list of Assignment 01. The new list `processing_errors` is separate. No Wireshark check is repeated, because no base field changed.
+
 ## Verdict
 
 PASS.
