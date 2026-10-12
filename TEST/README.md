@@ -25,6 +25,7 @@ This directory holds the graded evidence for Assignment 01. One test case owns o
 | A2-T01 | HTTP URL decode | [`A2-T01_http_url_decode`](A2-T01_http_url_decode/) | `python main.py --pcap TEST/A2-T01_http_url_decode/input.pcap --output TEST/A2-T01_http_url_decode/output.jsonl` | PASS | |
 | A2-T02 | HTML entity decode | [`A2-T02_html_entity`](A2-T02_html_entity/) | `python main.py --pcap TEST/A2-T02_html_entity/input.pcap --output TEST/A2-T02_html_entity/output.jsonl` | PASS | |
 | A2-T03 | SMTP MIME decode | [`A2-T03_smtp_mime`](A2-T03_smtp_mime/) | `python main.py --pcap TEST/A2-T03_smtp_mime/input.pcap --output TEST/A2-T03_smtp_mime/output.jsonl` | PASS | |
+| A2-T04 | Invalid bytes | [`A2-T04_invalid_bytes`](A2-T04_invalid_bytes/) | `python main.py --pcap TEST/A2-T04_invalid_bytes/input.pcap --output TEST/A2-T04_invalid_bytes/output.jsonl` | PASS | |
 | A2-T07 | TCP handshake | [`A2-T07_tcp_handshake`](A2-T07_tcp_handshake/) | `python main.py --pcap TEST/A2-T07_tcp_handshake/input.pcap --output TEST/A2-T07_tcp_handshake/output.jsonl --flows-output TEST/A2-T07_tcp_handshake/flows.jsonl` | PASS | |
 | A2-T08 | Bidirectional flow | [`A2-T08_bidirectional_flow`](A2-T08_bidirectional_flow/) | `python main.py --pcap TEST/A2-T08_bidirectional_flow/input.pcap --output TEST/A2-T08_bidirectional_flow/output.jsonl --flows-output TEST/A2-T08_bidirectional_flow/flows.jsonl` | PASS | |
 | A2-T09 | TCP close | [`A2-T09_tcp_close`](A2-T09_tcp_close/) | one run per file in `input/` into `output/` and `flows/` (see the case README) | PASS | |
