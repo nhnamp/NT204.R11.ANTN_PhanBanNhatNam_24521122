@@ -59,6 +59,19 @@ The `packet_id` of the event in `output_drop.jsonl` is 5, not 1. The counter cou
 
 Wireshark shows the same 5 packets: TCP over IPv6, an ARP request, an ICMP echo request, a GRE packet that carries an inner IPv4 TCP packet, and a TCP segment to port 4444 with 64 data bytes. Wireshark decodes the inner packet of GRE. The parser stops at GRE, because GRE is not a supported protocol.
 
+## Retest after Assignment 02
+
+The retest reruns the command of this case with the program of Assignment 02. The base fields are unchanged: every event has the same values and the same key order as in the committed output before the retest. The retest adds ten keys to each event: `payload_hex`, `decode_status`, `decoded`, `preprocess_status`, `processing_action`, `reason`, `normalized`, `flow_id`, `direction`, and `processing_errors`. `console.txt` shows the new summary lines.
+
+New values in this case:
+
+- Packets 1 and 2 (IPv6, ARP) are `partial` with `skip_flow` and the reason `no network layer; no transport layer`. Packets 3 and 4 (ICMP, GRE) are `partial` with `skip_flow` and the reason `no transport layer`. These four events have no `flow_id` and no `direction`.
+- Packet 5 is `valid` with `keep`. Its `flow_id` is `tcp-754b9f097b1c` and its `direction` is `forward`. The decoder reports `partial` with the reason `binary payload` for its 64 random bytes, so `decode_status` is `partial`.
+- The four other events have `decode_status` `not_applicable`. `processing_errors` is `[]` in every event.
+- With `drop`, the run keeps only the event of packet 5, with the same new values as in the `keep` run. The policy `drop` removes the `unsupported` events, as before.
+
+The tables above describe the base fields and stay valid. The field `errors` is the parser list of Assignment 01. The new list `processing_errors` is separate. No Wireshark check is repeated, because no base field changed.
+
 ## Verdict
 
 PASS.
