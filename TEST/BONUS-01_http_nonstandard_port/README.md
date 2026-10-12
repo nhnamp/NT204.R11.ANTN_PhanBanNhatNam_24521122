@@ -50,6 +50,20 @@ Every event has `detection.confidence="high"`, `status="ok"`, and no errors.
 
 Wireshark decodes both packets on port 8080 as HTTP, because 8080 is in its own list of HTTP ports. On port 3000 it shows only TCP. After Decode As is set to HTTP for port 3000, it shows `POST /bonus HTTP/1.1` and the form item `user` = `nt204`, the same as the event. The parser needs no such setting, because the payload decides the protocol.
 
+## Retest after Assignment 02
+
+The retest reruns the commands of this case with the program of Assignment 02. The base fields are unchanged: every event has the same values and the same key order as in the committed output before the retest. The retest adds ten keys to each event: `payload_hex`, `decode_status`, `decoded`, `preprocess_status`, `processing_action`, `reason`, `normalized`, `flow_id`, `direction`, and `processing_errors`. `console.txt` shows the new summary lines.
+
+New values in this case:
+
+- For both files, `decode_status` is `not_applicable` and `decoded` is `[]`, because the form body `user=nt204` and the text `hello` need no decoding.
+- All 3 events are `valid` with `keep`, `reason` is `null`, and `processing_errors` is `[]`.
+- `bonus_http_3000`: the `flow_id` is `tcp-ad5ac99fa160` and `direction` is `forward`. `normalized.host` is `example.com` and `normalized.path` is `/bonus`.
+- `bonus_http_8080`: both events have the `flow_id` `tcp-e0a613662464`. `direction` is `forward` for the request and `backward` for the response. The request gives `normalized.host` `example.com` and `normalized.path` `/bonus`. The response gives `null` for both.
+- `normalized.app_protocol` is `HTTP` for all 3 events, as `app_protocol` is.
+
+The tables above describe the base fields and stay valid. The field `errors` is the parser list of Assignment 01. The new list `processing_errors` is separate. No Wireshark check is repeated, because no base field changed.
+
 ## Verdict
 
 PASS.
