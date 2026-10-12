@@ -1,8 +1,11 @@
 """Group packets into bidirectional flows."""
 
 import hashlib
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Callable, NamedTuple
+
+from ids.config import Config
 
 Endpoint = tuple[str, int]
 HANDSHAKE, ESTABLISHED, CLOSING, CLOSED, RESET = "HANDSHAKE", "ESTABLISHED", "CLOSING", "CLOSED", "RESET"
@@ -28,6 +31,18 @@ class _Flow:
     rst_count: int = 0
     state: str | None = None
     fin_directions: tuple[str, ...] = ()
+    number: int = 0
+
+
+class _Observation(NamedTuple):
+    protocol: str
+    source: Endpoint
+    destination: Endpoint
+    timestamp: float
+    length: int
+    flags: list[str]
+    app_protocol: str
+    rank: int
 
 
 class Step(NamedTuple):
@@ -86,45 +101,101 @@ def next_step(state: str, flags: list[str], direction: str, fin_directions: tupl
 
 
 class FlowTracker:
-    def __init__(self) -> None:
-        self._flows: dict[tuple, _Flow] = {}
+    def __init__(
+        self, *, tcp_timeout: float = Config.tcp_timeout, udp_timeout: float = Config.udp_timeout
+    ) -> None:
+        self._timeouts = {"TCP": tcp_timeout, "UDP": udp_timeout}
+        # Each table holds its flows in the order of their last packet: expiry reads only the front.
+        self._tables: dict[str, OrderedDict[tuple, _Flow]] = {"TCP": OrderedDict(), "UDP": OrderedDict()}
+        self._now = float("-inf")
+        self._created = 0
+        self._pending: list[dict] = []
 
     def update(self, view: dict) -> tuple[str, str, list[dict]]:
         """Add one packet to its flow. Return the flow id, the direction, and the flows that left the table."""
-        source = (view["src_ip"], view["src_port"])
-        destination = (view["dst_ip"], view["dst_port"])
-        key = (view["protocol"], *sorted((source, destination)))
-        flow = self._flows.get(key)
+        # Read the packet first, so a bad packet cannot change the clock or the table.
+        seen = _observe(view)
+        table = self._tables[seen.protocol]
+        previous_now = self._now
+        self._now = max(previous_now, seen.timestamp)
+        self._expire()
+        key = tuple(sorted((seen.source, seen.destination)))
+        flow = table.get(key)
         if flow is None:
-            endpoint_a = _initiator(view, source, destination)
-            endpoint_b = destination if endpoint_a == source else source
-            flow_id = _flow_id(view["protocol"], endpoint_a, endpoint_b, view["timestamp"])
-            flow = self._flows[key] = _Flow(
-                flow_id, view["protocol"], endpoint_a, endpoint_b, view["timestamp"], view["timestamp"]
-            )
-        forward = source == flow.endpoint_a
+            flow = self._create(seen)
+        forward = seen.source == flow.endpoint_a
         direction = "forward" if forward else "backward"
-        _count(flow, view, forward)
+        _count(flow, seen, forward)
         if flow.protocol == "TCP":
-            step = first_step(view["tcp_flags"], direction) if flow.state is None else next_step(
-                flow.state, view["tcp_flags"], direction, flow.fin_directions
+            step = first_step(seen.flags, direction) if flow.state is None else next_step(
+                flow.state, seen.flags, direction, flow.fin_directions
             )
             flow.state, flow.fin_directions = step.state, step.fin_directions
-        return flow.flow_id, direction, []
+        table[key] = flow
+        # A late packet keeps its flow in place: moving it would put an older flow behind a newer one.
+        if seen.timestamp >= previous_now:
+            table.move_to_end(key)
+        return flow.flow_id, direction, self._drain()
 
     def flush(self) -> list[dict]:
-        """Export every flow and empty the table. The sort is stable, so equal start times keep creation order."""
-        flows = sorted(self._flows.values(), key=lambda flow: flow.start_time)
-        self._flows.clear()
-        return [_record(flow, "end_of_input") for flow in flows]
+        """Export every flow and empty the table. Equal start times keep creation order."""
+        flows = sorted(
+            (flow for table in self._tables.values() for flow in table.values()),
+            key=lambda flow: (flow.start_time, flow.number),
+        )
+        records = [*self._pending, *(_record(flow, "end_of_input") for flow in flows)]
+        self._pending = []
+        for table in self._tables.values():
+            table.clear()
+        return records
+
+    def _create(self, seen: _Observation) -> _Flow:
+        endpoint_a = _initiator(seen)
+        endpoint_b = seen.destination if endpoint_a == seen.source else seen.source
+        flow_id = _flow_id(seen.protocol, endpoint_a, endpoint_b, seen.timestamp)
+        self._created += 1
+        return _Flow(
+            flow_id, seen.protocol, endpoint_a, endpoint_b, seen.timestamp, seen.timestamp, number=self._created
+        )
+
+    def _expire(self) -> None:
+        """Move the flows that were idle for longer than their timeout to the pending exports."""
+        expired: list[tuple[tuple, _Flow]] = []
+        for protocol, table in self._tables.items():
+            for key, flow in table.items():
+                if self._now - flow.last_seen <= self._timeouts[protocol]:
+                    break
+                expired.append((key, flow))
+        expired.sort(key=lambda item: (item[1].last_seen, item[1].number))
+        # The records exist before the flows leave the table, so a failure here loses no flow.
+        records = [_record(flow, "idle_timeout") for _, flow in expired]
+        self._pending.extend(records)
+        for key, flow in expired:
+            del self._tables[flow.protocol][key]
+
+    def _drain(self) -> list[dict]:
+        exported, self._pending = self._pending, []
+        return exported
 
 
-def _initiator(view: dict, source: Endpoint, destination: Endpoint) -> Endpoint:
+def _observe(view: dict) -> _Observation:
+    return _Observation(
+        view["protocol"],
+        (view["src_ip"], view["src_port"]),
+        (view["dst_ip"], view["dst_port"]),
+        view["timestamp"],
+        view["length"] or 0,
+        view["tcp_flags"],
+        view["app_protocol"],
+        _rank(view),
+    )
+
+
+def _initiator(seen: _Observation) -> Endpoint:
     """Guess the client from the first packet. A SYN/ACK comes from the server."""
-    flags = view["tcp_flags"]
-    if view["protocol"] == "TCP" and "SYN" in flags and "ACK" in flags:
-        return destination
-    return source
+    if seen.protocol == "TCP" and "SYN" in seen.flags and "ACK" in seen.flags:
+        return seen.destination
+    return seen.source
 
 
 def _flow_id(protocol: str, a: Endpoint, b: Endpoint, start_time: float) -> str:
@@ -133,23 +204,20 @@ def _flow_id(protocol: str, a: Endpoint, b: Endpoint, start_time: float) -> str:
     return f"{protocol.lower()}-{hashlib.blake2b(text.encode(), digest_size=6).hexdigest()}"
 
 
-def _count(flow: _Flow, view: dict, forward: bool) -> None:
-    flow.last_seen = max(flow.last_seen, view["timestamp"])
-    length = view["length"] or 0
+def _count(flow: _Flow, seen: _Observation, forward: bool) -> None:
+    flow.last_seen = max(flow.last_seen, seen.timestamp)
     if forward:
         flow.forward_packets += 1
-        flow.forward_bytes += length
+        flow.forward_bytes += seen.length
     else:
         flow.backward_packets += 1
-        flow.backward_bytes += length
-    flags = view["tcp_flags"]
-    flow.syn_count += "SYN" in flags
-    flow.ack_count += "ACK" in flags
-    flow.fin_count += "FIN" in flags
-    flow.rst_count += "RST" in flags
-    rank = _rank(view)
-    if rank > flow.application_rank:
-        flow.application_protocol, flow.application_rank = view["app_protocol"], rank
+        flow.backward_bytes += seen.length
+    flow.syn_count += "SYN" in seen.flags
+    flow.ack_count += "ACK" in seen.flags
+    flow.fin_count += "FIN" in seen.flags
+    flow.rst_count += "RST" in seen.flags
+    if seen.rank > flow.application_rank:
+        flow.application_protocol, flow.application_rank = seen.app_protocol, seen.rank
 
 
 def _rank(view: dict) -> int:
