@@ -73,6 +73,22 @@ Items 01 and 03 keep `src_ip=10.0.0.1` and `dst_ip=10.0.0.2` in `network`, altho
 
 Wireshark confirms three sample items. For item 01 it reports a bogus IPv4 header length, as the `network`/`malformed` error does. For item 08 it reports a fault in the DNS answer name, as the `dns`/`malformed` error does. It cannot open item 19, because the file is not a capture file.
 
+## Retest after Assignment 02
+
+The retest reruns the command of this case with the program of Assignment 02. The base fields are unchanged: every event has the same values and the same key order as in the committed output before the retest. The retest adds ten keys to each event: `payload_hex`, `decode_status`, `decoded`, `preprocess_status`, `processing_action`, `reason`, `normalized`, `flow_id`, `direction`, and `processing_errors`. `console.txt` shows the new summary lines.
+
+New values in this case:
+
+- Every run writes the same number of events as before. The output files of item 19 (both policies) and of items 16 and 17 under `drop` are empty, so they are unchanged.
+- A packet with a malformed or too short header has no usable transport layer. Items 01, 03, 04, 05, 07, 16, and 17 are `partial` with `skip_flow`, and the tracker does not read them. The reason is `no transport layer`. Items 16 and 17 give `no network layer; no transport layer` for the empty frames, the ARP packet, and the IPv6 packet, and `no transport layer` for the ICMP and GRE packets of item 17.
+- Items 02, 06, 08, 10, 11, 12, 13, and 18 keep their flow fields. They are `partial` with `keep` and the reason `packet status is partial` or `packet status is malformed`. These events join a flow.
+- The decoder adds one typed entry to `processing_errors`: the type `limit` for item 11 (the 20 KB request line) and item 13 (5 000 SMTP lines). The decoder cut its input there. No other event has a `processing_errors` entry.
+- The decoder reports `partial` for item 09, for the 3 packets of item 14, and for item 15, because their payloads are binary (reason `binary payload`). These events are `valid` with `keep`. Every other event has `decode_status` `not_applicable`.
+- Items 20 (the two link types) are `valid` with `keep`, as normal packets.
+- With `drop`, every item except 16, 17, and 19 writes the same events as with `keep`, byte for byte. Items 16 and 17 write none, and item 19 never wrote any.
+
+The tables above describe the base fields and stay valid. The field `errors` is the parser list of Assignment 01. The new list `processing_errors` is separate. No Wireshark check is repeated, because no base field changed.
+
 ## Verdict
 
 PASS.
