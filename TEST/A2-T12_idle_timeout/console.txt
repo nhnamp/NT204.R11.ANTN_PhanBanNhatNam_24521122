@@ -1,0 +1,16 @@
+$ python main.py --pcap TEST/A2-T12_idle_timeout/input.pcap --output TEST/A2-T12_idle_timeout/output.jsonl --flows-output TEST/A2-T12_idle_timeout/flows.jsonl
+packets read: 6
+events written: 6
+ok: 6
+partial: 0
+unsupported: 0
+malformed: 0
+other: 0
+preprocess valid: 6
+preprocess partial: 0
+preprocess invalid: 0
+preprocess other: 0
+dropped: 0
+flows written: 3
+elapsed: 0.002s
+exit code: 0
