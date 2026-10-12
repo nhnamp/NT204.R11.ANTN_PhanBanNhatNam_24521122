@@ -63,6 +63,20 @@ The request-only fields (`method`, `target`, `host`) are `null`. A response has 
 
 Wireshark shows the same response: version `HTTP/1.1`, status code `200`, phrase `OK`, the headers `Content-Type`, `Server`, and `Content-Length`, and the 5-byte body `hello`. Its TCP segment length is 84, equal to `payload_len`.
 
+## Retest after Assignment 02
+
+The retest reruns the command of this case with the program of Assignment 02. The base fields are unchanged: every event has the same values and the same key order as in the committed output before the retest. The retest adds ten keys to each event: `payload_hex`, `decode_status`, `decoded`, `preprocess_status`, `processing_action`, `reason`, `normalized`, `flow_id`, `direction`, and `processing_errors`. `console.txt` shows the new summary lines.
+
+New values in this case:
+
+- `decode_status` is `not_applicable` and `decoded` is `[]` for the event, because nothing needs decoding.
+- `preprocess_status` is `valid`, `processing_action` is `keep`, and `reason` is `null` for the event.
+- The event has the `flow_id` `tcp-cc207a7df611`, and `direction` is `forward`.
+- `processing_errors` is `[]`.
+- `normalized.host` and `normalized.path` are `null`, because a response has no request line. `normalized.headers` has the names `content-type`, `server`, `content-length`.
+
+The tables above describe the base fields and stay valid. The field `errors` is the parser list of Assignment 01. The new list `processing_errors` is separate. No Wireshark check is repeated, because no base field changed.
+
 ## Verdict
 
 PASS.

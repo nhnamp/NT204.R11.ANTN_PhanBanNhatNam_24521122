@@ -1,8 +1,16 @@
 $ python main.py --pcap TEST/TC-06_http_response/input.pcap --output TEST/TC-06_http_response/output.jsonl
 packets read: 1
 events written: 1
+ok: 1
+partial: 0
 unsupported: 0
 malformed: 0
+other: 0
+preprocess valid: 1
+preprocess partial: 0
+preprocess invalid: 0
+preprocess other: 0
 dropped: 0
-elapsed: 0.001s
+flows written: 1
+elapsed: 0.003s
 exit code: 0
