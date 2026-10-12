@@ -143,7 +143,7 @@ Two design rules hold the architecture together:
 
 ## 5. Event schema
 
-Every line of the output file is one JSON object: one event for one captured packet. A field that a layer does not have is `null`.
+Every line of the output file is one JSON object: one event. A packet source gives one event for each captured packet. An events file (`--events`) gives one event for each input line. A field that a layer does not have is `null`. An event from an events file holds only the base fields that its input line holds. The enrichment fields and the keys of `normalized` are always present.
 
 ### Event
 
@@ -152,7 +152,7 @@ Every line of the output file is one JSON object: one event for one captured pac
 | `packet_id` | int | 1-based counter of the packets read in the run. A dropped packet still takes an id, so a gap in the ids shows a dropped packet. |
 | `timestamp` | float | Capture time in epoch seconds. |
 | `timestamp_iso` | string | The same time in ISO 8601, always UTC. |
-| `source` | string | `"pcap:<file>"` or `"live:<interface>"`. |
+| `source` | string | `"pcap:<file>"` or `"live:<interface>"`. For an input line that is not a JSON object, the events file reader writes `"events:<file>:<line>"`. |
 | `length` | int | Captured length of the packet in bytes. |
 | `link_type` | string | `Ethernet`, `Loopback`, `LinuxSLL`, `RawIP`, or the Scapy class name. |
 | `network` | object or null | IPv4 fields. `null` when the packet is not IPv4. |
@@ -164,6 +164,7 @@ Every line of the output file is one JSON object: one event for one captured pac
 | `payload_preview` | string | The first 64 payload bytes as lower-case hex, `""` when there is no payload. |
 | `status` | string | `ok`, `partial`, `unsupported`, or `malformed` (see [section 7](#7-error-handling)). |
 | `errors` | list | One entry per fault: `{"stage", "type", "message"}`. Empty when there is no fault. |
+| `payload_hex` | string or null | The payload bytes as lower-case hex, cut at `--payload-limit` bytes. `""` when the packet has no payload. `null` with `--payload preview`. |
 
 ### `network` (IPv4)
 
@@ -267,9 +268,85 @@ An answer uses `rclass`, not `class`, because `class` is a Python keyword. The r
 
 Every entry in `lines` has `kind` and the decoded `text`. A command line adds `command` and `argument`, for example `MAIL FROM` and `<alice@example.com>`. A reply line adds `code`, `separator`, and `message`.
 
+### Enrichment fields
+
+The three stages after the parser add nine fields. They are always present, in this order, after the base fields. A replayed record keeps its base fields, and the stages write these fields again.
+
+| Field | Type | Set by | Meaning |
+|---|---|---|---|
+| `decode_status` | string | decoder | `ok`, `partial`, `failed`, or `not_applicable` (see [section 7](#status-axes)). |
+| `decoded` | list | decoder | One item for each field that the decoder changed or could not decode. `[]` when nothing needed decoding. |
+| `preprocess_status` | string | preprocessor | `valid`, `partial`, or `invalid`. |
+| `processing_action` | string | preprocessor | `keep`: the flow tracker reads the record. `skip_flow`: the record is written and the tracker does not read it. |
+| `reason` | string or null | preprocessor | `null` when `preprocess_status` is `valid`. Otherwise one phrase for each cause, joined with `"; "`. |
+| `normalized` | object | preprocessor | One consistent view of the record. All keys are always present. |
+| `flow_id` | string or null | flow tracker | The flow of the packet, for example `tcp-a471b9d13f91`. `null` when `processing_action` is `skip_flow`, and when the tracker raised an exception (the record then has an entry with the stage `flow`). |
+| `direction` | string or null | flow tracker | `forward` for a packet from endpoint A of the flow, `backward` for a packet from endpoint B. `null` when `flow_id` is `null`. |
+| `processing_errors` | list | all stages | Faults of the three stages, as `{"stage", "type", "message"}` (see [section 7](#processing_errors)). |
+
+`flow_id` is the protocol in lower case, a hyphen, and 12 hexadecimal digits. The digits are a BLAKE2b hash of the protocol, both endpoints, the start time, and a counter for a flow that restarts at the same time. The id does not depend on the order of the packets in other flows, so the same input gives the same ids.
+
+### `decoded` item
+
+| Field | Type | Meaning |
+|---|---|---|
+| `field` | string | The source of the value: `http.target`, `http.body`, `payload`, `mime.body`, or `mime.part[N]` (N counts the leaf parts from 1). |
+| `methods` | list of string | The decoders that changed the value, in order: `percent`, `form`, `html_entity`, `base64`, `quoted-printable`, and `charset:<name>`. |
+| `value` | string or null | The decoded text, cut at `--payload-limit` characters. `null` when the item is `failed`, for a binary payload, for malformed MIME headers, and for a payload that is not hex. |
+| `status` | string | `ok`, `partial`, or `failed`. |
+| `reason` | string or null | `null` when `ok`. Otherwise a short cause, for example `invalid percent escape` or `binary payload`. |
+
+The raw value always stays in its base field. For example, `application.target` keeps `/a/%2e%2e/b` and the item `http.target` holds `/a/../b`.
+
+This item comes from packet 1 of `TEST/A2-T01_http_url_decode/output.jsonl`. The raw target there is `/search?q=%27%20OR%201%3D1`.
+
+```json
+{"field": "http.target", "methods": ["form"], "value": "/search?q=' OR 1=1", "status": "ok", "reason": null}
+```
+
+### `normalized`
+
+The object has the same 17 keys in every record. A key that the record cannot give is `null`, `[]`, or `{}`.
+
+| Key | Type | Rule |
+|---|---|---|
+| `timestamp` | float or null | Epoch seconds, from `timestamp`, or from `timestamp_iso` when `timestamp` is missing. A number from 0 to 4 102 444 800. |
+| `timestamp_iso` | string or null | The same time in ISO 8601, UTC. A time without a zone counts as UTC. |
+| `protocol` | string or null | `TCP` or `UDP` in upper case, from `transport.protocol`. Otherwise `null`. |
+| `src_ip`, `dst_ip` | string or null | The canonical text of the address. `2001:DB8::1` gives `2001:db8::1`. An address with a zone id or a leading zero (`010.0.0.1`) gives `null`. |
+| `src_port`, `dst_port` | int or null | An integer, or a decimal string, from 0 to 65 535. Port 0 is valid. |
+| `tcp_flags` | list of string | The names `FIN SYN RST PSH ACK URG ECE CWR` in this order. Other names are dropped. |
+| `length` | int or null | The captured length of the frame in bytes. |
+| `payload_len` | int or null | The payload length in bytes. |
+| `app_protocol` | string | `HTTP`, `DNS`, `SMTP`, or `UNKNOWN`. A missing or other value gives `UNKNOWN`. |
+| `detection_method` | string or null | `payload`, `port+payload`, `port`, or `none`. |
+| `host` | string or null | The HTTP `Host` without its port and trailing dot, in lower case. `EXAMPLE.com.:80` gives `example.com`. |
+| `domains` | list of string | The DNS question and answer names in lower case, without trailing dot and duplicates, in order of appearance. |
+| `headers` | object | The HTTP headers. The names are in lower case and the values are stripped. A name that occurs several times maps to a list. |
+| `path`, `query` | string or null | The decoded HTTP target (the raw target when the decoder made no item), split at the first `?`. The path has no dot segments (`/a/../b` gives `/b`). The case stays. `null` when the target does not start with `/`. |
+
+### Flow record
+
+The flow tracker writes one record for each flow to the flows file (`--flows-output`, default `flows.jsonl`). A flow ends when its idle timeout passes, when the table is full, when a new connection starts on the same endpoints, or when the input ends.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `flow_id` | string | The id that the events of the flow carry. |
+| `protocol` | string | `TCP` or `UDP`. |
+| `application_protocol` | string | `HTTP`, `DNS`, `SMTP`, or `UNKNOWN`. |
+| `endpoint_a`, `endpoint_b` | object | `{"ip", "port"}`. Endpoint A is the initiator. The first packet of the flow decides it: its sender is A. A first packet with SYN and ACK is the exception: its receiver is A, because a server sends it. |
+| `start_time`, `last_seen` | float | Epoch seconds of the first and the last packet. |
+| `duration` | float | `last_seen` minus `start_time`, in seconds. |
+| `packet_count`, `byte_count` | int | All packets of the flow, and the sum of their captured frame lengths. |
+| `forward_packet_count`, `forward_byte_count` | int | The packets from endpoint A to endpoint B, and their bytes. |
+| `backward_packet_count`, `backward_byte_count` | int | The packets from endpoint B to endpoint A, and their bytes. |
+| `syn_count`, `ack_count`, `fin_count`, `rst_count` | int or null | The number of packets that carry the flag. `null` for UDP. |
+| `state` | string or null | `HANDSHAKE`, `ESTABLISHED`, `CLOSING`, `CLOSED`, or `RESET`. `null` for UDP. |
+| `end_reason` | string | `idle_timeout`, `evicted`, `new_connection`, or `end_of_input`. |
+
 ### Example
 
-This event comes from `TEST/TC-04_http_get/output.jsonl`. The file holds it on one line. It is formatted here for reading, and `payload_preview` is shortened.
+This event comes from `TEST/TC-04_http_get/output.jsonl`. The file holds it on one line. It is formatted here for reading. `payload_preview` and `payload_hex` are shortened.
 
 ```json
 {
@@ -290,16 +367,57 @@ This event comes from `TEST/TC-04_http_get/output.jsonl`. The file holds it on o
   "app_protocol": "HTTP",
   "detection": {"protocol": "HTTP", "method": "port+payload", "confidence": "high",
                 "rule": "http_request"},
-  "application": {"kind": "request", "version": "HTTP/1.1",
-                  "headers": {"host": "example.com", "user-agent": "NT204/1.0", "accept": "*/*"},
-                  "body_len": 0, "body_preview": "", "body_complete": true, "partial": false,
-                  "method": "GET", "target": "/index.html", "host": "example.com",
-                  "status_code": null, "reason": null, "content_length": null,
-                  "content_type": null},
+  "application": {"kind": "request", "version": "HTTP/1.1", "headers": {"host": "example.com",
+                  "user-agent": "NT204/1.0", "accept": "*/*"}, "body_len": 0, "body_preview": "",
+                  "body_complete": true, "partial": false, "method": "GET", "target": "/index.html",
+                  "host": "example.com", "status_code": null, "reason": null,
+                  "content_length": null, "content_type": null},
   "payload_len": 83,
   "payload_preview": "474554202f696e6465782e68746d6c20…",
   "status": "ok",
-  "errors": []
+  "errors": [],
+  "payload_hex": "474554202f696e6465782e68746d6c20…",
+  "decode_status": "not_applicable",
+  "decoded": [],
+  "preprocess_status": "valid",
+  "processing_action": "keep",
+  "reason": null,
+  "normalized": {"timestamp": 1758441600.0, "timestamp_iso": "2025-09-21T08:00:00+00:00",
+                 "protocol": "TCP", "src_ip": "10.0.0.1", "dst_ip": "10.0.0.2", "src_port": 40000,
+                 "dst_port": 80, "tcp_flags": ["PSH", "ACK"], "length": 137, "payload_len": 83,
+                 "app_protocol": "HTTP", "detection_method": "port+payload", "host": "example.com",
+                 "domains": [], "headers": {"host": "example.com", "user-agent": "NT204/1.0",
+                 "accept": "*/*"}, "path": "/index.html", "query": null},
+  "flow_id": "tcp-5f8ec36d79cc",
+  "direction": "forward",
+  "processing_errors": []
+}
+```
+
+The flow record below comes from `TEST/A2-T13_flow_statistics/flows.jsonl`. It is one line in the file.
+
+```json
+{
+  "flow_id": "tcp-a471b9d13f91",
+  "protocol": "TCP",
+  "application_protocol": "UNKNOWN",
+  "endpoint_a": {"ip": "10.0.0.1", "port": 40000},
+  "endpoint_b": {"ip": "10.0.0.2", "port": 4444},
+  "start_time": 1758441600.0,
+  "last_seen": 1758441604.2,
+  "duration": 4.2,
+  "packet_count": 10,
+  "byte_count": 940,
+  "forward_packet_count": 6,
+  "forward_byte_count": 424,
+  "backward_packet_count": 4,
+  "backward_byte_count": 516,
+  "syn_count": 2,
+  "ack_count": 9,
+  "fin_count": 2,
+  "rst_count": 0,
+  "state": "CLOSED",
+  "end_reason": "end_of_input"
 }
 ```
 
@@ -354,7 +472,7 @@ The parser gives the correct protocol in all 9 cases. Wireshark relies on its po
 
 ## 7. Error handling
 
-The program never stops on a bad packet (`ERR-1`). The test case [TC-12](TEST/TC-12_malformed_packet/) runs a corpus of 20 kinds of bad input, and a fuzz test mutates every fixture packet 200 times.
+The program never stops on a bad packet or a bad input line (`ERR-1`). The test case [TC-12](TEST/TC-12_malformed_packet/) runs a corpus of 20 kinds of bad packet, and a fuzz test mutates every fixture packet 200 times. The test case [T14](TEST/A2-T14_malformed_event/) runs bad event lines. A second corpus of 37 bad records and a second fuzz test run through the three stages of the enrichment.
 
 ### Stage contract
 
@@ -364,7 +482,15 @@ The program never stops on a bad packet (`ERR-1`). The test case [TC-12](TEST/TC
 - An unexpected exception in a stage becomes an error with the exception class name as its type. The stages after it do not run, and the layers before it stay in the event.
 - A fault in one layer never removes a lower layer. For example, an IPv4 header with a bad length keeps its addresses in `network`.
 
+`Enricher.process` runs the decoder, the preprocessor, and the flow tracker in the same way. Each stage has its own guard:
+
+- A stage that raises an exception adds one entry to `processing_errors`, with the stage name and the exception class name as its type. The enricher takes back every field that the stage wrote, so a stage that fails halfway leaves no partial value.
+- A failed decoder does not stop the later stages. A failed preprocessor gives `processing_action="skip_flow"` and the reason `preprocessor failed`, so the tracker does not run.
+- A record that the writer cannot write is written again with its base fields only, and then with only its `source`. Each fallback has the reason `record could not be written` and an entry with the stage `output`.
+
 ### Status values
+
+`status` is the parse status that the packet parser sets.
 
 | `status` | Meaning | Kept by `--unknown drop` |
 |---|---|---|
@@ -372,6 +498,22 @@ The program never stops on a bad packet (`ERR-1`). The test case [TC-12](TEST/TC
 | `partial` | The packet is cut, fragmented, or over a parser limit. The event holds what was readable. | yes |
 | `unsupported` | No supported network or transport layer: for example ARP, IPv6, ICMP, or GRE. | no |
 | `malformed` | A header or a message breaks its protocol rules. | yes |
+
+`--unknown drop` also removes an event with `preprocess_status="invalid"`, and the summary counts these events under `dropped`. It never removes an event that carries a `processing_errors` entry with an exception class name, because that entry is a bug that must stay visible.
+
+### Status axes
+
+The program keeps five separate axes. No stage merges two of them.
+
+| Axis | Field | Set by | Values and meaning |
+|---|---|---|---|
+| Parse | `status` | packet parser | `ok`, `partial`, `unsupported`, or `malformed` (see above). |
+| Application | `app_protocol` | detector | `HTTP`, `DNS`, `SMTP`, or `UNKNOWN`. |
+| Decode | `decode_status` | decoder | `ok`: at least one item, and every item is `ok`. `partial`: some data was decoded and some was lost or replaced, or at least one item is `partial`. `failed`: at least one item, and every item is `failed`. `not_applicable`: no item, because nothing needed decoding. |
+| Preprocess | `preprocess_status` | preprocessor | `valid`: the timestamp and the flow fields are usable, and the parse status is `ok` or absent. `partial`: the timestamp is usable, but a flow field is missing or unusable, or the parse status is not `ok`. `invalid`: the record is not an object, or the timestamp is missing or unusable. |
+| Action | `processing_action` | preprocessor | `keep`: the flow tracker reads the record. `skip_flow`: the record is written and the tracker does not read it. |
+
+The flow fields are the protocol (`TCP` or `UDP`), both IP addresses, and both ports. The only mandatory field of a record is its timestamp. A missing optional field gives `null` or `[]` in `normalized` and does not change the status.
 
 ### Error entries
 
@@ -382,6 +524,16 @@ Each entry in `errors` has three fields:
 - `message`: a short description.
 
 A non-first IPv4 fragment is `partial` with a `fragment` error. The program does not reassemble fragments.
+
+### `processing_errors`
+
+The three stages of the enrichment never write to `errors`, so the base fields of an event stay as the parser wrote them. They write to `processing_errors`. Each entry has three fields:
+
+- `stage`: `input`, `decoder`, `preprocessor`, `flow`, or `output`.
+- `type`: `invalid_record` (the events file reader could not use the line), `limit` (the decoder cut its input at `--payload-limit` or at the preview), or an exception class name. An exception class name means a bug that a stage guard caught.
+- `message`: a short description.
+
+The list is empty when there is no fault.
 
 ### Limits
 
@@ -394,6 +546,10 @@ The limits keep the cost of one crafted packet small.
 | DNS names | 63-byte labels, 255-byte names, 64 compression jumps, backward pointers only | `malformed` error |
 | SMTP | 1 000 lines per payload | `limit` error, `status="partial"` |
 | Output | flush every 100 events | at most 100 events lost if the process is killed |
+| Events file | 1 048 576 bytes per line | the line becomes an `invalid_record` entry, and the reader skips the rest of the line |
+| Decoder input | `--payload-limit`, default 4 096 bytes | the decoder reads the cut payload and adds a `limit` entry to `processing_errors`. An item that the cut touches gets the reason `payload cut` and is `partial`. When the cut leaves no item, `decode_status` stays `not_applicable` |
+| MIME | 16 leaf parts, 32 nested `multipart/` lines | a `partial` item with the reason `more than 16 parts`, or a `partial` item `mime.body` with the reason `too many nested parts` and no value |
+| Flow table | `--max-flows`, default 100 000 | the oldest flow at the front of a table leaves with `end_reason="evicted"` (see [section 9](#9-limitations)) |
 
 ## 8. Tests
 
