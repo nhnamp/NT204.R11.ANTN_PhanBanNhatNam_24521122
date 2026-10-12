@@ -47,6 +47,18 @@ Packet 2 shows why the DNS rule checks the structure. Bytes 2 and 3 of the rando
 
 Wireshark labels the same 4 packets as TCP, DNS, SMTP, and TCP. It labels the random bytes on port 53 as DNS and on port 25 as SMTP, because it selects a dissector by port. It does not recognise the HTTP request on port 53. The parser gives `UNKNOWN` to the random bytes on all three ports and `HTTP` to packet 4, because it decides from the payload.
 
+## Retest after Assignment 02
+
+The retest reruns the command of this case with the program of Assignment 02. The base fields are unchanged: every event has the same values and the same key order as in the committed output before the retest. The retest adds ten keys to each event: `payload_hex`, `decode_status`, `decoded`, `preprocess_status`, `processing_action`, `reason`, `normalized`, `flow_id`, `direction`, and `processing_errors`. `console.txt` shows the new summary lines.
+
+New values in this case:
+
+- Packets 1 to 3 carry random bytes on the ports of HTTP, DNS, and SMTP. Each event has `decode_status` `partial`, with one `payload` item and the reason `binary payload`. `app_protocol` stays `UNKNOWN`, so the traps hold.
+- Packet 4 carries a GET request on the DNS port. `app_protocol` is `HTTP` from the payload. `decode_status` is `not_applicable`, `normalized.host` is `example.com`, and `normalized.path` is `/`.
+- All 4 events are `valid` with `keep`, `reason` is `null`, and `processing_errors` is `[]`. Each event has its own `flow_id`, and `direction` is `forward`.
+
+The tables above describe the base fields and stay valid. The field `errors` is the parser list of Assignment 01. The new list `processing_errors` is separate. No Wireshark check is repeated, because no base field changed.
+
 ## Verdict
 
 PASS.
