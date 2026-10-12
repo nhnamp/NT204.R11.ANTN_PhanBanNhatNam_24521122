@@ -1,14 +1,19 @@
 """Tests that run the bad record corpus through the CLI (GEN-1: no input stops the run)."""
 
 import json
+import time
 from pathlib import Path
 
 import pytest
 
+from ids.capture.events import EventFileSource
 from ids.cli import parse_args, run
+from ids.config import Config
 from ids.contract import TYPED_ERRORS
+from ids.enrich import Enricher
 from tests.fixtures.build_pcaps import CORPUS_DIR, large_corpus_files
 
+BUDGET_SECONDS = 1.0
 CASES = sorted([*(path.stem for path in CORPUS_DIR.glob("*.jsonl")), *large_corpus_files()])
 
 
@@ -44,3 +49,17 @@ def test_a_bad_record_does_not_stop_the_run_and_no_stage_raises(name: str, unkno
     # A class name in processing_errors means that a stage raised an exception that the guard hid.
     errors = [error["type"] for event in events for error in event["processing_errors"]]
     assert set(errors) <= set(TYPED_ERRORS)
+
+
+@pytest.mark.parametrize("name", CASES)
+def test_no_corpus_record_takes_longer_than_the_budget(name: str, tmp_path: Path) -> None:
+    enricher = Enricher(Config(interface=None, pcap=None, output="events.jsonl", unknown="keep", count=None))
+    records = iter(EventFileSource(_case_file(name, tmp_path)))
+
+    while True:
+        started = time.perf_counter()
+        item = next(records, None)
+        if item is None:
+            break
+        enricher.process(*item)
+        assert time.perf_counter() - started < BUDGET_SECONDS
