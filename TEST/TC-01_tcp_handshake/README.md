@@ -49,6 +49,20 @@ Wireshark shows the same three steps: `[SYN]`, `[SYN, ACK]`, and `[ACK]`. Its ra
 
 The first run of this case had no Application Protocol Detector, so every event had `app_protocol="UNKNOWN"` and `detection=null`. The retest changes only these two fields in all 3 events. All network and transport fields are the same as in the first run.
 
+## Retest after Assignment 02
+
+The retest reruns the command of this case with the program of Assignment 02. The base fields are unchanged: every event has the same values and the same key order as in the committed output before the retest. The retest adds ten keys to each event: `payload_hex`, `decode_status`, `decoded`, `preprocess_status`, `processing_action`, `reason`, `normalized`, `flow_id`, `direction`, and `processing_errors`. `console.txt` shows the new summary lines.
+
+New values in this case:
+
+- `decode_status` is `not_applicable` and `decoded` is `[]` for all 3 events, because nothing needs decoding.
+- `preprocess_status` is `valid`, `processing_action` is `keep`, and `reason` is `null` for all 3 events.
+- All events have the `flow_id` `tcp-5f8ec36d79cc`, and `direction` is `forward`, `backward`, `forward`.
+- `processing_errors` is `[]`.
+- `normalized.tcp_flags` follows the TCP flags of each event (`SYN`, then `SYN` and `ACK`, then `ACK`), and `normalized.app_protocol` is `HTTP` from the port hint.
+
+The tables above describe the base fields and stay valid. The field `errors` is the parser list of Assignment 01. The new list `processing_errors` is separate. No Wireshark check is repeated, because no base field changed.
+
 ## Verdict
 
 PASS.
