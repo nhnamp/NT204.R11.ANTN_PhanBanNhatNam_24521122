@@ -41,7 +41,7 @@ Add one row per test case when the case passes. Fill the commit column in a late
 
 ## Folder names
 
-Use the test case ID and a short name: `TC-01_tcp_handshake`, `TC-12_malformed_packet`, `BONUS-01_http_port_8080`.
+Use the test case ID and a short name: `TC-01_tcp_handshake`, `TC-12_malformed_packet`, `BONUS-01_http_port_8080`, `A2-T07_tcp_handshake`.
 
 ## Console summary format
 

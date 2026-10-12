@@ -4,6 +4,8 @@ This repository holds the coursework for the course *Intrusion Detection and Pre
 
 Assignment 01 builds the **packet capture and parser module**. The module reads packets from a live network interface or from a PCAP file, parses them, and writes one normalized event per packet as JSON Lines. The detection engine of the later assignments reads only these events. It never reads a Scapy packet.
 
+Assignment 02 adds three stages after the parser: a **Decoder**, a **Preprocessor**, and a **Flow Tracker**. The stages decode URL-encoded and MIME-encoded values, give each event a consistent `normalized` view, and group the events into network flows. The module writes the flows to a second JSON Lines file.
+
 ## Contents
 
 1. [Overview and scope](#1-overview-and-scope)
@@ -28,10 +30,22 @@ Assignment 01 builds the **packet capture and parser module**. The module reads 
 The module:
 
 - captures packets from a live interface, or reads them from a PCAP or pcapng file, through one shared pipeline;
+- reads records from a JSON Lines events file as a third source (`--events`);
 - parses IPv4, TCP, UDP, HTTP/1.x, DNS, and SMTP;
 - detects the application protocol from the payload, and uses the port only as a hint;
-- never stops on a malformed, truncated, or unsupported packet;
-- writes every event to a JSON Lines file, one event per line.
+- never stops on a malformed, truncated, or unsupported packet or record;
+- writes every event to a JSON Lines file, one event per line;
+- writes one record for each network flow to a second JSON Lines file.
+
+Three stages run on every event after the parser. A stage reads the output of the earlier stages, and it reads a plain `dict`, never a Scapy packet.
+
+| Stage | Reads | Writes |
+|---|---|---|
+| Decoder | `application` and the payload | `decode_status`, `decoded` |
+| Preprocessor | the base fields | `preprocess_status`, `processing_action`, `reason`, `normalized` |
+| Flow Tracker | `normalized`, for the events with `processing_action="keep"` | `flow_id`, `direction`, and the flows file |
+
+The Decoder handles percent encoding, form encoding, HTML entities, Base64, Quoted-Printable, MIME messages, and charsets. The Preprocessor validates the record and normalizes the protocol name, the IP address, the port, the flags, the host, the path, and the time. The Flow Tracker groups TCP and UDP packets by their endpoints, follows the TCP connection state, and counts packets and bytes. The stages do not change the Assignment 01 fields. The new fields are in [section 5](#5-event-schema).
 
 ## 2. Installation
 
@@ -54,45 +68,76 @@ To list the interface names on macOS, use `ifconfig -l`. On Linux, use `ip link`
 ## 3. Usage
 
 ```text
-python main.py (--interface IFACE | --pcap FILE) [--output FILE] [--unknown {keep,drop}] [--count N]
+python main.py (--interface IFACE | --pcap FILE | --events FILE) [--output FILE] [--unknown {keep,drop}]
+               [--count N] [--payload {preview,full}] [--payload-limit N] [--tcp-timeout SEC]
+               [--udp-timeout SEC] [--max-flows N] [--flows-output FILE]
 ```
 
 | Option | Default | Meaning |
 |---|---|---|
 | `--interface IFACE` | — | Capture live traffic from the interface `IFACE`. |
 | `--pcap FILE` | — | Read packets from the PCAP or pcapng file `FILE`. |
+| `--events FILE` | — | Read JSON Lines records from `FILE`. A record can come from an earlier run. The stages write their fields again. |
 | `--output FILE` | `events.jsonl` | Write the events to `FILE`. The run overwrites an existing file. |
-| `--unknown {keep,drop}` | `keep` | `keep` writes an unsupported packet as an event with `app_protocol="UNKNOWN"`. `drop` does not write it. |
-| `--count N` | no limit | Stop after `N` packets. `N` must be at least 1. |
+| `--unknown {keep,drop}` | `keep` | `keep` writes an unsupported packet as an event with `app_protocol="UNKNOWN"`. `drop` does not write an unsupported packet or an `invalid` record (see [section 7](#status-values)). |
+| `--count N` | no limit | Stop after `N` packets, or after `N` records of an events file. `N` must be at least 1. |
+| `--payload {preview,full}` | `full` | `full` stores the payload in `payload_hex`. `preview` leaves `payload_hex` `null`, and the Decoder reads the 64-byte `payload_preview`. The Decoder adds a `limit` entry when this cut shortens a payload that it reads. |
+| `--payload-limit N` | `4096` | The largest payload in bytes that `payload_hex` stores and that the Decoder reads. |
+| `--tcp-timeout SEC` | `120.0` | The idle time after which a TCP flow ends. The unit is seconds of packet time. |
+| `--udp-timeout SEC` | `30.0` | The idle time after which a UDP flow ends. The unit is seconds of packet time. |
+| `--max-flows N` | `100000` | The largest number of active flows. When the table is full, the oldest flow leaves with `end_reason="evicted"` (see [section 9](#9-limitations)). |
+| `--flows-output FILE` | `flows.jsonl` | Write the flow records to `FILE`. The run overwrites an existing file. |
 
-`--interface` and `--pcap` are mutually exclusive, and one of them is required.
+`--interface`, `--pcap`, and `--events` are mutually exclusive, and one of them is required. `--output` and `--flows-output` must name two files, and neither can be the input file.
+
+The idle time uses the time of the packets, not the clock of the computer. A flow is idle when the time since its last packet is larger than the timeout. A flow of exactly the timeout length stays.
 
 Examples:
+
+A PCAP file. The run writes `events.jsonl` and `flows.jsonl`:
 
 ```bash
 python main.py --pcap tests/fixtures/all.pcap --output events.jsonl
 ```
 
+A live capture (needs root):
+
 ```bash
 sudo .venv/bin/python main.py --interface en0 --count 100 --output /tmp/live.jsonl
 ```
 
+An events file. The file holds three records, and one of them has an IPv4 address with a leading zero:
+
 ```bash
-python main.py --pcap tests/fixtures/unknown_protocols.pcap --unknown drop
+python main.py --events tests/fixtures/events/protocol_and_ip.jsonl --output events_in.jsonl --flows-output flows_in.jsonl
 ```
 
-At the end of a run, the program prints a summary on stderr. The events go to the output file, so the two streams never mix.
+A tuned run. The fixture holds one UDP flow at 0 s, a second flow at 100 s, and the first flow again at 200 s. The default timeout of 30 seconds gives three flows. The timeout of 1000 seconds joins the first and the third group into one flow of four packets, so the run writes two flows. `--payload preview` leaves `payload_hex` `null`:
+
+```bash
+python main.py --pcap tests/fixtures/idle_timeout.pcap --udp-timeout 1000 --payload preview --output tuned.jsonl --flows-output tuned_flows.jsonl
+```
+
+At the end of a run, the program prints a summary on stderr. The events go to the output file, so the two streams never mix. This is the summary of the first example:
 
 ```text
-packets read: 5
-events written: 1
-ok: 1
+packets read: 139
+events written: 139
+ok: 134
 partial: 0
-unsupported: 0
+unsupported: 5
 malformed: 0
-dropped: 4
-elapsed: 0.001s
+other: 0
+preprocess valid: 134
+preprocess partial: 5
+preprocess invalid: 0
+preprocess other: 0
+dropped: 0
+flows written: 16
+elapsed: 0.020s
 ```
+
+`packets read` counts the lines of an events file, when the source is one. The first group of status lines counts the parser `status` of the events written, and `other` counts an event with no known `status`. The second group counts `preprocess_status`. `dropped` counts the events that `--unknown drop` removed. `flows written` counts the lines of the flows file.
 
 Exit codes:
 
@@ -100,33 +145,49 @@ Exit codes:
 |---|---|
 | 0 | The run finished, or Ctrl-C stopped it. Ctrl-C closes the output file and prints the summary. |
 | 1 | A file cannot be opened, live capture has no root permission, or the interface does not exist. The program prints one error line and no traceback. |
-| 2 | The command line is not valid. |
+| 2 | The command line is not valid. For example, two sources, or `--output` and `--flows-output` that name one file. |
 
 ## 4. Architecture
 
 ```text
- Live capture (--interface)        PCAP import (--pcap)
- LiveSource: sniff in a thread     PcapSource: PcapReader, one packet at a time
-            └──────────────┬───────────────┘
-                           ▼   the same loop in cli.run, one call site
-                 Pipeline.process(packet)
-                   ├─ parse_ipv4            → event.network
-                   ├─ parse_transport       → event.transport, payload
+ Live capture (--interface)    PCAP import (--pcap)         Events file (--events)
+ LiveSource: sniff in a        PcapSource: PcapReader,      EventFileSource: one JSON object
+ thread                        one packet at a time         for each line, guarded
+            └───────────────┬────────┘                                  │
+                            ▼                                           │
+                 Pipeline.process(packet) → Event                       │
+                   ├─ parse_ipv4            → event.network             │
+                   ├─ parse_transport       → event.transport, payload  │
                    ├─ detect_app_protocol   → event.app_protocol, event.detection
                    ├─ parse_http / parse_dns / parse_smtp → event.application
                    └─ errors and status     → event.errors, event.status
-                           ▼
-                 JsonLinesWriter.write(event)  → one line in the output file
+                 event.to_dict()  ───────────────┬──────────────────────┘
+                                                 ▼   the same loop in cli.run
+                                  Enricher.process(record)
+                                    0. remove old enrichment fields (replay rule)
+                                    1. decode_record       → decode_status, decoded
+                                    2. preprocess_record   → preprocess_status, processing_action,
+                                                             reason, normalized
+                                    3. FlowTracker.update  → flow_id, direction
+                                       (only when processing_action = keep)
+                                                 │
+                              ┌──────────────────┴─────────────────┐
+                              ▼                                    ▼
+                JsonLinesWriter (--output)           JsonLinesWriter (--flows-output)
+                one line for each record             one line for each flow that left
 ```
 
 | Module | Role |
 |---|---|
 | `main.py` | Entry point. It parses the arguments and calls `ids.cli.run`. |
-| `ids/cli.py` | Selects the packet source, runs the capture loop, and prints the summary. |
+| `ids/cli.py` | Selects the source, runs the one loop, writes the events and the flows, and prints the summary. |
+| `ids/config.py` | `Config`: the options of one run, with their defaults. |
+| `ids/contract.py` | The field names, the status values, and the error types that the three stages share. |
 | `ids/capture/base.py` | `PacketSource`: the interface that both sources implement. |
 | `ids/capture/pcap.py` | `PcapSource`: reads a capture file as a stream, so a large file never loads into memory. |
 | `ids/capture/live.py` | `LiveSource`: runs Scapy `sniff` in a thread and hands each packet to the loop through a queue. |
-| `ids/pipeline.py` | Runs the stages in order. It wraps each stage, so a failure keeps the layers that are already parsed. |
+| `ids/capture/events.py` | `EventFileSource`: reads an events file one line at a time. A bad line becomes an `invalid_record` entry, not an exception. |
+| `ids/pipeline.py` | Runs the parser stages in order. It wraps each stage, so a failure keeps the layers that are already parsed. It also fills `payload_hex`. It does not run the three new stages. |
 | `ids/parsers/network.py` | Parses the IPv4 header (RFC 791). |
 | `ids/parsers/transport.py` | Parses the TCP header (RFC 793) or the UDP header (RFC 768), and extracts the payload. |
 | `ids/parsers/detector.py` | The Application Protocol Detector. |
@@ -134,11 +195,17 @@ Exit codes:
 | `ids/parsers/dns.py` | Reads DNS names with pointer safety, and parses a DNS message (RFC 1035). |
 | `ids/parsers/smtp.py` | Parses SMTP commands, replies, and data lines (RFC 5321). |
 | `ids/events.py` | The event dataclasses and their conversion to JSON-compatible values. |
-| `ids/output.py` | `JsonLinesWriter`: writes one event per line. |
+| `ids/output.py` | `JsonLinesWriter`: writes one event or one record per line. |
+| `ids/enrich.py` | `Enricher`: runs the Decoder, the Preprocessor, and the Flow Tracker on one record. Each stage has its own guard, so a failure writes the default fields and the later stages skip. |
+| `ids/stages/decoder.py` | `decode_record`: decodes the target, the body, and the payload of a record. |
+| `ids/stages/mime.py` | Base64 and Quoted-Printable decoding, SMTP message framing, and the MIME message reader. |
+| `ids/stages/preprocessor.py` | `preprocess_record`: validates a record and builds the `normalized` object. |
+| `ids/stages/flow.py` | `FlowTracker`: the flow key, the endpoints, the TCP state machine, the counters, the timeouts, and the flow records. |
 
 Two design rules hold the architecture together:
 
 - **One pipeline.** Live capture and PCAP import share every stage after the source. Only `cli.run` calls `Pipeline.process`.
+- **One enricher.** The three stages run inside `Enricher.process`, and only `cli.run` calls it. The stages read a `dict`, so an events file and a capture file take the same path.
 - **One library boundary.** Only `ids/capture/` and `ids/parsers/` import Scapy. An event holds JSON-compatible values only, so the detection engine never needs Scapy.
 
 ## 5. Event schema
@@ -559,7 +626,7 @@ Run the unit tests:
 pytest
 ```
 
-The suite has 219 tests. It covers every parser, the detector, the pipeline, the CLI, the bad-input corpus, the non-standard ports, and a seeded fuzz test.
+The suite has 867 tests. It covers every parser, the detector, the pipeline, the CLI, the bad-input corpus, the non-standard ports, and a seeded fuzz test. The tests of the three stages cover the Decoder and the MIME reader, the Preprocessor, the TCP state machine, the flow tracker, the events file reader, and the enrichment options. A second corpus of 37 bad records, a second seeded fuzz test, and a check of the schema tables in this README complete the suite.
 
 The fixtures in `tests/fixtures/` are generated. Regenerate them with one command:
 
@@ -567,48 +634,91 @@ The fixtures in `tests/fixtures/` are generated. Regenerate them with one comman
 python tests/fixtures/build_pcaps.py
 ```
 
-The script writes every fixture with fixed times and fixed random seeds, so the files are identical on every run. `all.pcap` holds every fixture packet, and `malformed/` holds the corpus of R9.2.
+The script writes every fixture with fixed times and fixed random seeds, so the files are identical on every run. `all.pcap` holds the packets of the packet fixtures. `malformed/` holds the corpus of bad packets. `events/` holds the events files, and `events/corpus/` holds the bad records.
 
 ### Test cases
 
 The graded evidence is in [`TEST/`](TEST/). Each case has a folder with the input, the output, the console summary, and a README that states the purpose, the command, the expected result, the actual result, and the verdict. The case README also records the comparison with Wireshark. The commit of each case is in the index of [`TEST/README.md`](TEST/README.md).
 
+The cases T01 to T14 test the three stages. Their folder names start with `A2-`, for example `TEST/A2-T07_tcp_handshake/`. A case that checks flows also holds the flow records. The cases TC-01 to BONUS-04 ran again with the three stages. Their READMEs have a retest section.
+
 | ID | Case | Result |
 |---|---|---|
-| TC-01 | TCP handshake: SYN, SYN/ACK, ACK | PASS |
-| TC-02 | TCP packet with a payload | PASS |
-| TC-03 | UDP packet | PASS |
-| TC-04 | HTTP GET request | PASS |
-| TC-05 | HTTP POST request with a body | PASS |
-| TC-06 | HTTP response: status code and headers | PASS |
-| TC-07 | DNS query: domain and query type | PASS |
-| TC-08 | DNS response with one answer | PASS |
-| TC-09 | SMTP commands: EHLO, MAIL FROM, RCPT TO | PASS |
-| TC-10 | SMTP responses, including a multi-line reply | PASS |
-| TC-11 | Unknown protocols, with `keep` and `drop` | PASS |
-| TC-12 | Malformed packets: the 20-item corpus | PASS |
-| BONUS-01 | HTTP on a non-standard port | PASS |
-| BONUS-02 | DNS on a non-standard port | PASS |
-| BONUS-03 | SMTP on a non-standard port | PASS |
-| BONUS-04 | Detection traps | PASS |
+| [TC-01](TEST/TC-01_tcp_handshake/) | TCP handshake: SYN, SYN/ACK, ACK | PASS |
+| [TC-02](TEST/TC-02_tcp_data/) | TCP packet with a payload | PASS |
+| [TC-03](TEST/TC-03_udp/) | UDP packet | PASS |
+| [TC-04](TEST/TC-04_http_get/) | HTTP GET request | PASS |
+| [TC-05](TEST/TC-05_http_post/) | HTTP POST request with a body | PASS |
+| [TC-06](TEST/TC-06_http_response/) | HTTP response: status code and headers | PASS |
+| [TC-07](TEST/TC-07_dns_query/) | DNS query: domain and query type | PASS |
+| [TC-08](TEST/TC-08_dns_response/) | DNS response with one answer | PASS |
+| [TC-09](TEST/TC-09_smtp_command/) | SMTP commands: EHLO, MAIL FROM, RCPT TO | PASS |
+| [TC-10](TEST/TC-10_smtp_response/) | SMTP responses, including a multi-line reply | PASS |
+| [TC-11](TEST/TC-11_unknown_protocol/) | Unknown protocols, with `keep` and `drop` | PASS |
+| [TC-12](TEST/TC-12_malformed_packet/) | Malformed packets: the 20-item corpus | PASS |
+| [BONUS-01](TEST/BONUS-01_http_nonstandard_port/) | HTTP on a non-standard port | PASS |
+| [BONUS-02](TEST/BONUS-02_dns_nonstandard_port/) | DNS on a non-standard port | PASS |
+| [BONUS-03](TEST/BONUS-03_smtp_nonstandard_port/) | SMTP on a non-standard port | PASS |
+| [BONUS-04](TEST/BONUS-04_detection_traps/) | Detection traps | PASS |
+| [T01](TEST/A2-T01_http_url_decode/) | HTTP URL decode: percent, plus sign, invalid escape | PASS |
+| [T02](TEST/A2-T02_html_entity/) | HTML entity decode | PASS |
+| [T03](TEST/A2-T03_smtp_mime/) | SMTP MIME decode: Base64 and Quoted-Printable | PASS |
+| [T04](TEST/A2-T04_invalid_bytes/) | Invalid UTF-8 and binary payloads | PASS |
+| [T05](TEST/A2-T05_normalization/) | Normalization of case, address, and time | PASS |
+| [T06](TEST/A2-T06_missing_field/) | Event with missing fields | PASS |
+| [T07](TEST/A2-T07_tcp_handshake/) | TCP handshake as one flow | PASS |
+| [T08](TEST/A2-T08_bidirectional_flow/) | Bidirectional flow | PASS |
+| [T09](TEST/A2-T09_tcp_close/) | TCP close by FIN and by RST | PASS |
+| [T10](TEST/A2-T10_udp_flow/) | UDP query and response as one flow | PASS |
+| [T11](TEST/A2-T11_concurrent_flows/) | Concurrent flows | PASS |
+| [T12](TEST/A2-T12_idle_timeout/) | Idle timeout | PASS |
+| [T13](TEST/A2-T13_flow_statistics/) | Flow statistics | PASS |
+| [T14](TEST/A2-T14_malformed_event/) | Malformed and unsupported events, with `keep` and `drop` | PASS |
 
-To check the evidence, run the command in each case README and compare the new output with the committed `output.jsonl`. Only the `source` field can differ. `console.txt` shows the summary format of its phase, so do not compare it.
+To check the evidence, run the command in each case README and compare the new output with the committed `output.jsonl`. For a case that checks flows, compare `flows.jsonl` too. Only the `source` field can differ. Do not compare `console.txt`, because its elapsed time changes on every run. The script `tests/check_evidence_compat.py` reruns every input and compares the base fields of the committed outputs.
 
 ## 9. Limitations
 
-- **IPv4 only.** IPv6 and other network protocols are `unsupported`.
-- **No TCP stream reassembly.** The pipeline parses one packet at a time. An HTTP or SMTP message that spans several segments is parsed segment by segment. A segment that carries only an HTTP body or SMTP message content matches no rule, so it is `UNKNOWN`.
-- **No IP fragment reassembly.** A non-first fragment is `partial`, with no transport data.
+- **IPv4 only.** IPv6 and other network protocols are `unsupported`. ICMP has no ports, so it is not a flow.
+- **No TCP stream reassembly.** The pipeline parses one packet at a time. An HTTP or SMTP message that spans several segments is parsed segment by segment. A segment that carries only an HTTP body or SMTP message content matches no rule, so it is `UNKNOWN`. The Decoder also reads one packet. A MIME message whose end is in a later segment gives a `partial` item with the reason `message continues in a later segment`.
+- **No IP fragment reassembly.** A non-first fragment is `partial`, with no transport data. It has `skip_flow`, so the flow counts miss it.
 - **No SMTP session state.** The parser classifies each line alone. A body line that looks like a command or a reply is classified as one.
 - **HTTP line ends.** The HTTP parser splits on CRLF only. A hand-typed request with bare LF line ends is detected as HTTP, but its fields are parsed wrongly.
 - **DNS edge cases.** An mDNS announcement with no question is `UNKNOWN`. A label that contains a dot is shown as two labels.
 - **Empty frames.** An empty or 1-byte frame is `unsupported` with no error, so `--unknown drop` removes it.
 - **Credentials in the output.** An SMTP `AUTH` argument or an HTTP header can hold credentials, and the event log stores them. Check the output of a live capture before you share it.
-- **Live capture.** A run without root overwrites the output file with an empty file before it reports the permission error. On an idle interface, Ctrl-C takes up to 1 second to stop the capture thread.
-- **Output file.** Every run overwrites the output file.
+- **Live capture.** A run without root overwrites the output file and the flows file with empty files before it reports the permission error. On an idle interface, Ctrl-C takes up to 1 second to stop the capture thread.
+- **Output files.** Every run overwrites the output file and the flows file.
 - **Malformed event time.** When the outer guard of the pipeline catches an exception, the event has `timestamp=0.0` (1970-01-01) and `status="malformed"`.
 
+### Decoder and Preprocessor
+
+- **Truncated payload.** `payload_hex` stops at `--payload-limit`, and the Decoder reads only that part. A cut that touches a decoded item makes the item `partial` with the reason `payload cut`. A cut that touches no item leaves `decode_status` as `not_applicable`. Both cases add a `limit` entry to `processing_errors`.
+- **Larger events.** `payload_hex`, `decoded`, and `normalized` repeat data. For `tests/fixtures/all.pcap` (139 packets), the output file grows from 162 367 bytes (the Assignment 01 code) to 258 355 bytes. `--payload preview` gives 250 592 bytes, because it removes the payload from `payload_hex` and keeps the nine enrichment fields (about 85 000 bytes here). The option does not bring the file back to the Assignment 01 size.
+- **Binary payload.** Every binary payload (TLS, compressed data) has a `payload` item that is `partial`, with the reason `binary payload` and `value` as `null`.
+- **Entity without semicolon.** A browser also decodes `&#60script&#62`. The Decoder replaces only a complete entity, so it leaves this form as it is.
+- **SMTP end marker.** The Decoder accepts only `\r\n.\r\n` as the end of a message. A message that ends with `\n.\n` has no end for the Decoder, because servers differ on that form. The dot line stays in the body. A Quoted-Printable body gives a `partial` item with the reason `message continues in a later segment`. A Base64 body gives a `failed` item with the reason `invalid Base64 character`. A plain text body gives no item.
+- **Nesting cap.** A payload with more than 32 lines that start with a `multipart/` content type is not parsed, also when the extra lines sit in a body. The item is `mime.body` with `value` as `null`. An attacker can use this to avoid MIME decoding. The raw bytes stay in `payload_hex`.
+- **Malformed MIME header.** A header that makes the `email` package raise `UnicodeError` gives one `partial` item with the reason `malformed MIME headers` and no value. The Decoder then reads none of the parts.
+- **Unterminated quote in `charset`.** `charset="utf-8` reads as an unsupported charset. The Decoder reads the value as UTF-8 and the item is `partial`.
+- **Decoded `?` splits the target.** `path` and `query` come from the decoded target, so `/a%3Fb` gives the path `/a` and the query `b`. A raw `?` and an encoded one look the same after decoding. The raw target stays in `application.target`.
+- **Long target.** The decoded target is cut at `--payload-limit` characters. A target of 5 007 characters, with one escape, gives a `normalized.query` of 4 091 characters, while `application.target` keeps the full text. A later detection rule must read both.
+- **Decode scope.** The Decoder does not decode cookies, other headers, SMTP `AUTH` arguments, or a nested encoding. It decodes each value once: `%2541` gives `%41`.
+- **Parse cost.** The limit of 16 parts bounds the items, not the parse. A message of 2.5 MB with 50 000 parts took 0.24 s in a probe. The default `--payload-limit` keeps the cost small, and a large value raises it.
+
+### Flow Tracker
+
+- **Initiator guess.** A flow that starts with data has a guessed endpoint A: the sender of the first packet. `syn_count` of 0 tells a consumer that the capture did not show the handshake.
+- **Capture that starts in the middle.** A flow that starts with an ACK or data is `ESTABLISHED`. A capture that starts at the last ACK of a close also gives `ESTABLISHED`, not `CLOSED`, because the tracker never saw the FIN packets.
+- **Counters.** `byte_count` is the captured frame length. A capture with a short snap length counts fewer bytes than the wire carried.
+- **Lazy expiry.** The tracker expires a flow only when a packet arrives. Only a record with `processing_action="keep"` reaches the tracker and moves its clock. A live capture on an idle interface exports no flow until the next packet. At the end of the run or after Ctrl-C, the tracker exports the remaining flows with `end_reason="end_of_input"`.
+- **Late packets and expiry order.** A packet that is older than the newest packet updates its flow in place. Expiry and eviction read only the front of each table. A flow can therefore leave later than its timeout, and eviction can pick a flow that is not the oldest. No flow is lost, because the end of the run exports every flow.
+- **Clock jump.** One far-future timestamp (below year 2100) moves the clock for the rest of the run. Every flow that is active at that moment ends with `idle_timeout`. Flows of the other protocol then expire at their next packet, so a TCP flow of N packets becomes N flows. Flows of the same protocol stay behind the future flow and end only at the end of the run. The run does not stop.
+- **Ctrl-C at the wrong instant.** Two windows, each a few instructions wide, can break the flows file. A `KeyboardInterrupt` after the tracker returned its flows and before the writer wrote them loses those flows. A `KeyboardInterrupt` inside the tracker, after it listed the flows that leave and before it removed them from the table, exports a flow twice: the flows file then holds the same `flow_id` two times.
+
 ## 10. AI usage disclosure
+
+### Assignment 1
 
 This project uses Claude models from Anthropic, through the Claude Code harness.
 
@@ -629,3 +739,21 @@ Some bugs that the review found, and their causes:
 | HTTP parser | One header byte `0xB2` removed all IP and TCP fields from the event. | ISO-8859-1 decodes `0xB2` to `²`. `str.isdigit()` accepts it, but `int()` raises. |
 | SMTP parser | A data line such as `12345 records` became a reply with code 123. | The rule checked only the first 3 digits. RFC 5321 also requires a space, a hyphen, or the line end after the code. |
 | Fuzz test | The test could never fail. | The outer guard of the pipeline turns every exception into an event. The test now also rejects any error that comes from an unexpected exception. |
+
+### Assignment 02
+
+Claude Sonnet 5.5 helped write some code, implement tests, build fixtures, and verify `TEST/` evidence. Claude Opus 5.5 gave advice on the approach and reviewed the changes.
+
+Typical contributions:
+
+| Kind | Contribution |
+|---|---|
+| Decision | The three stages run in one `Enricher` with one guard for each stage. A failing stage keeps the earlier fields and does not stop the run. |
+| Decision | `flow_id` is a hash of the flow, not a counter, so the same input always gives the same ids. |
+| Decision | `--unknown drop` also removes an `invalid` record. The Decoder replaces only a complete HTML entity, and it marks a binary payload as `partial`. |
+| Bug finding | A probe showed that a payload cut that touches no decoded item leaves `decode_status` as `not_applicable`. An early draft of the limits said `partial`. |
+| Bug finding | A measurement showed that `--payload preview` does not bring the output back to the Assignment 01 size. The README now gives the measured sizes. |
+| Bug finding | The review of the flow tables found that a late packet can delay the exit of a flow, and that eviction can pick a flow that is not the oldest. Section 9 describes both. |
+| Test | One test compares the schema tables of this README with the field names of the contract. Six deliberate changes to the README all made it fail. |
+| Test | A corpus of 37 bad records and a seeded fuzz test run through the three stages. |
+| Test | `tests/check_evidence_compat.py` reruns the committed evidence and compares the base fields. |
