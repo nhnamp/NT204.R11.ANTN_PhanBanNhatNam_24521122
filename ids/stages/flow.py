@@ -32,6 +32,7 @@ class _Flow:
     state: str | None = None
     fin_directions: tuple[str, ...] = ()
     number: int = 0
+    occurrence: int = 0
 
 
 class _Observation(NamedTuple):
@@ -126,16 +127,21 @@ class FlowTracker:
         self._expire()
         key = tuple(sorted((seen.source, seen.destination)))
         flow = table.get(key)
+        step = replaced = None
+        if flow is not None and flow.protocol == "TCP":
+            step = next_step(flow.state, seen.flags, _direction(flow, seen), flow.fin_directions)
+            if step.restart:
+                # The old flow leaves before the limit check, so a reuse never evicts another flow.
+                self._release([(key, flow)], "new_connection")
+                replaced, flow, step = flow, None, None
         if flow is None:
             self._make_room()
-            flow = self._create(seen)
-        forward = seen.source == flow.endpoint_a
-        direction = "forward" if forward else "backward"
-        _count(flow, seen, forward)
+            flow = self._create(seen, replaced)
+        direction = _direction(flow, seen)
+        _count(flow, seen, direction == "forward")
         if flow.protocol == "TCP":
-            step = first_step(seen.flags, direction) if flow.state is None else next_step(
-                flow.state, seen.flags, direction, flow.fin_directions
-            )
+            if step is None:
+                step = first_step(seen.flags, direction)
             flow.state, flow.fin_directions = step.state, step.fin_directions
         table[key] = flow
         # A late packet keeps its flow in place: moving it would put an older flow behind a newer one.
@@ -155,13 +161,17 @@ class FlowTracker:
             table.clear()
         return records
 
-    def _create(self, seen: _Observation) -> _Flow:
+    def _create(self, seen: _Observation, replaced: _Flow | None) -> _Flow:
         endpoint_a = _initiator(seen)
         endpoint_b = seen.destination if endpoint_a == seen.source else seen.source
-        flow_id = _flow_id(seen.protocol, endpoint_a, endpoint_b, seen.timestamp)
+        # The same 5-tuple at the same start time would give the same id, so the new flow counts up.
+        same_start = replaced is not None and replaced.start_time == seen.timestamp
+        occurrence = replaced.occurrence + 1 if same_start else 0
+        flow_id = _flow_id(seen.protocol, endpoint_a, endpoint_b, seen.timestamp, occurrence)
         self._created += 1
         return _Flow(
-            flow_id, seen.protocol, endpoint_a, endpoint_b, seen.timestamp, seen.timestamp, number=self._created
+            flow_id, seen.protocol, endpoint_a, endpoint_b, seen.timestamp, seen.timestamp,
+            number=self._created, occurrence=occurrence,
         )
 
     def _expire(self) -> None:
@@ -208,6 +218,10 @@ def _observe(view: dict) -> _Observation:
     )
 
 
+def _direction(flow: _Flow, seen: _Observation) -> str:
+    return "forward" if seen.source == flow.endpoint_a else "backward"
+
+
 def _initiator(seen: _Observation) -> Endpoint:
     """Guess the client from the first packet. A SYN/ACK comes from the server."""
     if seen.protocol == "TCP" and "SYN" in seen.flags and "ACK" in seen.flags:
@@ -215,9 +229,8 @@ def _initiator(seen: _Observation) -> Endpoint:
     return seen.source
 
 
-def _flow_id(protocol: str, a: Endpoint, b: Endpoint, start_time: float) -> str:
-    # The text ends with "|0" so that a later disambiguation counter changes no existing id.
-    text = f"{protocol}|{a[0]}:{a[1]}|{b[0]}:{b[1]}|{start_time!r}|0"
+def _flow_id(protocol: str, a: Endpoint, b: Endpoint, start_time: float, occurrence: int) -> str:
+    text = f"{protocol}|{a[0]}:{a[1]}|{b[0]}:{b[1]}|{start_time!r}|{occurrence}"
     return f"{protocol.lower()}-{hashlib.blake2b(text.encode(), digest_size=6).hexdigest()}"
 
 

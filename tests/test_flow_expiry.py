@@ -57,6 +57,17 @@ def test_an_expired_flow_leaves_the_table_and_the_next_packet_starts_a_new_flow(
     assert [flow["packet_count"] for flow in tracker.flush()] == [1, 1]
 
 
+def test_a_packet_of_an_expired_flow_starts_a_new_flow_instead_of_joining_it() -> None:
+    tracker = FlowTracker(udp_timeout=30.0)
+    first_id = tracker.update(_packet(1, 100.0))[0]
+
+    second_id, _, exported = tracker.update(_packet(1, 200.0))
+
+    assert [flow["flow_id"] for flow in exported] == [first_id]
+    assert second_id != first_id
+    assert [flow["packet_count"] for flow in tracker.flush()] == [1]
+
+
 @pytest.mark.parametrize(("protocol", "survives"), [("TCP", True), ("UDP", False)])
 def test_tcp_and_udp_flows_use_their_own_timeouts(protocol: str, survives: bool) -> None:
     tracker = FlowTracker(tcp_timeout=100.0, udp_timeout=10.0)
