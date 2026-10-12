@@ -56,6 +56,19 @@ The response rule is stricter without a hint. On port 25 a reply code alone is e
 
 Wireshark shows the 13 packets on port 2526 only as TCP, because 2526 is not in its list of SMTP ports. The parser recognises SMTP on 12 of them from the payload alone.
 
+## Retest after Assignment 02
+
+The retest reruns the command of this case with the program of Assignment 02. The base fields are unchanged: every event has the same values and the same key order as in the committed output before the retest. The retest adds ten keys to each event: `payload_hex`, `decode_status`, `decoded`, `preprocess_status`, `processing_action`, `reason`, `normalized`, `flow_id`, `direction`, and `processing_errors`. `console.txt` shows the new summary lines.
+
+New values in this case:
+
+- `decode_status` is `not_applicable` and `decoded` is `[]` for all 13 events. The message in packet 10 has no `Content-Transfer-Encoding` header, so the decoder reads no MIME body.
+- All 13 events are `valid` with `keep`, `reason` is `null`, and `processing_errors` is `[]`.
+- All 13 events have the `flow_id` `tcp-c810f27afaae`. `direction` is `forward` for 7 events and `backward` for 6 events.
+- `normalized.app_protocol` equals `app_protocol` of each event: `SMTP` for 12 events and `UNKNOWN` for packet 10.
+
+The tables above describe the base fields and stay valid. The field `errors` is the parser list of Assignment 01. The new list `processing_errors` is separate. No Wireshark check is repeated, because no base field changed.
+
 ## Verdict
 
 PASS.

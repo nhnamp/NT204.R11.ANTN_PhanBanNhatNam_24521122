@@ -5,6 +5,12 @@ ok: 13
 partial: 0
 unsupported: 0
 malformed: 0
+other: 0
+preprocess valid: 13
+preprocess partial: 0
+preprocess invalid: 0
+preprocess other: 0
 dropped: 0
-elapsed: 0.002s
+flows written: 1
+elapsed: 0.003s
 exit code: 0
