@@ -50,6 +50,20 @@ The detector cannot find a DNS keyword, because DNS is binary. It accepts the pa
 
 Wireshark decodes both UDP packets on port 1053 as DNS, with no setting: `Standard query 0x4321 A example.com` and `Standard query response 0x4321 A example.com A 93.184.216.34`. On TCP port 9053 it shows only TCP. The parser recognises DNS on both ports, because it checks the DNS structure instead of a port list.
 
+## Retest after Assignment 02
+
+The retest reruns the commands of this case with the program of Assignment 02. The base fields are unchanged: every event has the same values and the same key order as in the committed output before the retest. The retest adds ten keys to each event: `payload_hex`, `decode_status`, `decoded`, `preprocess_status`, `processing_action`, `reason`, `normalized`, `flow_id`, `direction`, and `processing_errors`. `console.txt` shows the new summary lines.
+
+New values in this case:
+
+- For both files, `decode_status` is `not_applicable` and `decoded` is `[]`. The decoder skips DNS records.
+- All 3 events are `valid` with `keep`, `reason` is `null`, and `processing_errors` is `[]`.
+- `bonus_dns_1053` (UDP): both events have the `flow_id` `udp-14b9cab07048`. `direction` is `forward` for the query and `backward` for the response. `normalized.protocol` is `UDP`.
+- `bonus_dns_tcp_9053` (TCP): the `flow_id` is `tcp-a3b43eb7174c` and `direction` is `forward`. `normalized.protocol` is `TCP`.
+- `normalized.domains` is `["example.com"]` for all 3 events, and `normalized.app_protocol` is `DNS`.
+
+The tables above describe the base fields and stay valid. The field `errors` is the parser list of Assignment 01. The new list `processing_errors` is separate. No Wireshark check is repeated, because no base field changed.
+
 ## Verdict
 
 PASS.

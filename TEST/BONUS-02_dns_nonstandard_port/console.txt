@@ -5,8 +5,14 @@ ok: 2
 partial: 0
 unsupported: 0
 malformed: 0
+other: 0
+preprocess valid: 2
+preprocess partial: 0
+preprocess invalid: 0
+preprocess other: 0
 dropped: 0
-elapsed: 0.001s
+flows written: 1
+elapsed: 0.003s
 exit code: 0
 
 $ python main.py --pcap TEST/BONUS-02_dns_nonstandard_port/input/bonus_dns_tcp_9053.pcap --output TEST/BONUS-02_dns_nonstandard_port/output/bonus_dns_tcp_9053.jsonl
@@ -16,7 +22,13 @@ ok: 1
 partial: 0
 unsupported: 0
 malformed: 0
+other: 0
+preprocess valid: 1
+preprocess partial: 0
+preprocess invalid: 0
+preprocess other: 0
 dropped: 0
-elapsed: 0.001s
+flows written: 1
+elapsed: 0.003s
 exit code: 0
 
