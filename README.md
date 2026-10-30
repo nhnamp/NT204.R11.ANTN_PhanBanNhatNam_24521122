@@ -464,6 +464,131 @@ The flow record below comes from `TEST/assignment-02/A2-T13_flow_statistics/flow
 }
 ```
 
+### Rule match record
+
+The rule engine writes one record for each rule that matches one event. It writes the records to the rule match file (`--matches-output`, default `matches.jsonl`). The engine writes this file only when `--rules-config` is given. A rule match record is the "Detection Event" of the Assignment 03 description. This README calls it a rule match, because "detection" already names the application protocol detection of the `detection` field.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `timestamp` | float | The time of the event, from `normalized.timestamp`. |
+| `timestamp_iso` | string | The same time in ISO 8601, always UTC. |
+| `sid` | int | The rule id. |
+| `rev` | int | The rule revision. It is 1 when the rule does not give one. |
+| `msg` | string | The rule message. |
+| `classtype` | string or null | The rule class. `null` when the rule does not give one. |
+| `priority` | int or null | The rule priority. `null` when the rule does not give one. |
+| `protocol` | string | `TCP` or `UDP`. |
+| `src_ip`, `src_port`, `dst_ip`, `dst_port` | string, int | The 5-tuple of the event, from `normalized`. |
+| `application_protocol` | string | `HTTP`, `DNS`, `SMTP`, or `UNKNOWN`. |
+| `flow_id` | string or null | The flow of the event. `null` when the event has no flow. |
+| `direction` | string or null | `forward` or `backward`. `forward` means from the client to the server. |
+| `flow_state` | string or null | The TCP state of the flow after the packet. `null` for UDP. |
+| `packet_id` | int or null | The `packet_id` of the event, so a reader can find the event in the events file. |
+| `source` | string or null | The `source` of the event. |
+| `matched` | list | One item for each rule option that matched. |
+
+### `matched` item
+
+| Field | Type | Meaning |
+|---|---|---|
+| `keyword` | string | `content`, `flow`, `flags`, or `dsize`. |
+| `value` | string | The option value as the rule gives it, for example `../` or `to_server,established`. |
+| `position` | int or null | For `content`: the byte offset of the match in the payload. `null` for the other keywords. |
+
+### Detection Event fields
+
+Section 4.6 of the Assignment 03 description lists the minimum fields of a Detection Event. This table maps each one to its rule match field.
+
+| Detection Event field | Rule match field |
+|---|---|
+| timestamp | `timestamp`, `timestamp_iso` |
+| sid, rev, msg | `sid`, `rev`, `msg` |
+| priority / classtype | `priority`, `classtype` |
+| src/dst IP/port | `src_ip`, `src_port`, `dst_ip`, `dst_port` |
+| protocol | `protocol` |
+| application_protocol | `application_protocol` |
+| flow_id | `flow_id` |
+| match info | `matched` |
+
+### Rules report line
+
+The engine writes one line for each rule line of the enabled rule files to the rules report (`--rules-report`, default `rules_report.jsonl`). The engine writes this file only when `--rules-config` is given. A comment line or a blank line gets no report line. A disabled rule file gets no report line.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `file` | string | The path of the rule file. |
+| `line` | int | The 1-based line number in the rule file. |
+| `text` | string | The rule line as the file holds it. |
+| `status` | string | `valid`, `invalid`, `unsupported`, or `disabled`. |
+| `reason` | string or null | Why the rule is not `valid`. `null` for a valid rule. |
+| `rule` | object or null | The internal rule object. It is set for `valid` and `disabled`, and `null` otherwise. |
+
+### Rule status
+
+| Status | Meaning |
+|---|---|
+| `valid` | The engine uses the rule. |
+| `invalid` | The rule has a syntax error, a wrong type, a missing `sid` or `msg`, or the `sid` of an earlier rule. |
+| `unsupported` | The rule is valid Snort syntax, but it uses a keyword or a form outside the supported scope. |
+| `disabled` | The rule is valid, and its `sid` is in `disabled_sids` of the rule config. |
+
+### Rule engine examples
+
+This rule match record comes from `TEST/assignment-03/A3-T14_match_record/output/matches.jsonl`. It is one line in the file. It shows the example of section 5 of the description.
+
+```json
+{
+  "timestamp": 1758441601.5,
+  "timestamp_iso": "2025-09-21T08:00:01.500000+00:00",
+  "sid": 100001,
+  "rev": 1,
+  "msg": "Directory traversal detected",
+  "classtype": "web-application-attack",
+  "priority": 1,
+  "protocol": "TCP",
+  "src_ip": "10.0.0.5",
+  "src_port": 52133,
+  "dst_ip": "192.168.1.20",
+  "dst_port": 80,
+  "application_protocol": "HTTP",
+  "flow_id": "tcp-bbd9b7aed86f",
+  "direction": "forward",
+  "flow_state": "ESTABLISHED",
+  "packet_id": 4,
+  "source": "pcap:TEST/assignment-03/A3-T14_match_record/input/traffic.pcap",
+  "matched": [
+    {"keyword": "flow", "value": "to_server,established", "position": null},
+    {"keyword": "content", "value": "../", "position": 11}
+  ]
+}
+```
+
+The rules report line below comes from the same case. It is one line in the file. The `text` value is shortened.
+
+```json
+{
+  "file": "TEST/assignment-03/A3-T14_match_record/input/local.rules",
+  "line": 2,
+  "text": "alert tcp 10.0.0.0/24 any -> any 80 (msg:\"Directory traversal detected\"; …)",
+  "status": "valid",
+  "reason": null,
+  "rule": {"sid": 100001, "rev": 1, "msg": "Directory traversal detected", "action": "alert",
+           "protocol": "tcp", "src_ip": "10.0.0.0/24", "src_port": null, "direction": "->",
+           "dst_ip": null, "dst_port": {"low": 80, "high": 80},
+           "contents": [{"text": "../", "pattern": "2e2e2f", "nocase": false, "offset": null,
+                         "depth": null, "distance": null, "within": null}],
+           "flow": {"direction": "to_server", "established": true}, "flags": null, "dsize": null,
+           "classtype": "web-application-attack", "priority": 1,
+           "origin": "TEST/assignment-03/A3-T14_match_record/input/local.rules:2"}
+}
+```
+
+An invalid rule has no rule object. This line comes from `TEST/assignment-03/A3-T02_invalid_rule/output/rules_report.jsonl`:
+
+```json
+{"file": "TEST/assignment-03/A3-T02_invalid_rule/input/local.rules", "line": 2, "text": "alert tcp any any -> any 80 (msg:\"Missing sid\"; content:\"GET \"; rev:1;)", "status": "invalid", "reason": "missing sid", "rule": null}
+```
+
 ## 6. Application protocol detection
 
 The detector does not trust the port alone (`DET-1`). It runs the payload rules first, and uses the port only as a hint.

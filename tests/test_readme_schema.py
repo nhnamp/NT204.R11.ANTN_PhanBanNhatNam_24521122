@@ -1,10 +1,12 @@
 import json
 import re
+from dataclasses import fields
 from pathlib import Path
 
 import pytest
 
 from ids.contract import BASE_FIELDS, ENRICHMENT_FIELDS, PAYLOAD_FIELD, empty_normalized
+from ids.engine.model import MatchedItem, ParsedRule, RuleMatch
 
 ROOT = Path(__file__).resolve().parents[1]
 FLOW_EVIDENCE = ROOT / "TEST" / "assignment-02" / "A2-T13_flow_statistics" / "flows.jsonl"
@@ -31,6 +33,9 @@ def _documented_names(heading: str) -> set[str]:
         ("### Enrichment fields", set(ENRICHMENT_FIELDS)),
         ("### `normalized`", set(empty_normalized())),
         ("### Flow record", set(json.loads(FLOW_EVIDENCE.read_text().splitlines()[0]))),
+        ("### Rule match record", {item.name for item in fields(RuleMatch)}),
+        ("### `matched` item", {item.name for item in fields(MatchedItem)}),
+        ("### Rules report line", {item.name for item in fields(ParsedRule)}),
     ],
 )
 def test_the_readme_table_names_exactly_the_keys_of_the_contract(heading: str, expected: set[str]) -> None:
