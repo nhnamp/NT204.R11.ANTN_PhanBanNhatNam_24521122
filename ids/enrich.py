@@ -6,7 +6,7 @@ from functools import partial
 from ids.config import Config
 from ids.contract import ENRICHMENT_FIELDS, TYPED_ERRORS, default_enrichment
 from ids.stages.decoder import decode_record
-from ids.stages.flow import FlowTracker
+from ids.stages.flow import FlowContext, FlowTracker
 from ids.stages.preprocessor import preprocess_record
 
 STAGE_FIELDS = {
@@ -55,6 +55,14 @@ class Enricher:
 
     def flush(self) -> list[dict]:
         return self._tracker.flush()
+
+    def flow_context(self, record: dict) -> FlowContext | None:
+        """Return the flow of an output record of `process`. Call it before the next record changes the table."""
+        if record.get("flow_id") is None:
+            return None
+        context = self._tracker.context(record["normalized"])
+        # Another flow under the same key means that the flow of the record has left the table.
+        return context if context is not None and context.flow_id == record["flow_id"] else None
 
     def _update_flow(self, record: dict) -> tuple[dict, list[dict]]:
         flow_id, direction, exported = self._tracker.update(record["normalized"])

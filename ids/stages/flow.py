@@ -35,6 +35,17 @@ class _Flow:
     occurrence: int = 0
 
 
+@dataclass(frozen=True)
+class FlowContext:
+    """The flow facts of one packet. `state` is the TCP state after the packet, and `None` for UDP."""
+
+    flow_id: str
+    direction: str
+    state: str | None
+    forward_packets: int
+    backward_packets: int
+
+
 class _Observation(NamedTuple):
     protocol: str
     source: Endpoint
@@ -148,6 +159,16 @@ class FlowTracker:
         if seen.timestamp >= previous_now:
             table.move_to_end(key)
         return flow.flow_id, direction, self._drain()
+
+    def context(self, view: dict) -> FlowContext | None:
+        """Return the flow of the view as it is now, or None. It never changes the table."""
+        seen = _observe(view)
+        flow = self._tables[seen.protocol].get(tuple(sorted((seen.source, seen.destination))))
+        if flow is None:
+            return None
+        return FlowContext(
+            flow.flow_id, _direction(flow, seen), flow.state, flow.forward_packets, flow.backward_packets
+        )
 
     def flush(self) -> list[dict]:
         """Export every flow and empty the table. Equal start times keep creation order."""
