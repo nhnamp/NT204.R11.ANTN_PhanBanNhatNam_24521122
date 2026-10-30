@@ -36,6 +36,7 @@ This directory holds the graded evidence. Each assignment has its own folder: `a
 | A2-T12 | Idle timeout | [`A2-T12_idle_timeout`](assignment-02/A2-T12_idle_timeout/) | `python main.py --pcap TEST/assignment-02/A2-T12_idle_timeout/input.pcap --output TEST/assignment-02/A2-T12_idle_timeout/output.jsonl --flows-output TEST/assignment-02/A2-T12_idle_timeout/flows.jsonl` | PASS | `90b838d` |
 | A2-T13 | Flow statistics | [`A2-T13_flow_statistics`](assignment-02/A2-T13_flow_statistics/) | `python main.py --pcap TEST/assignment-02/A2-T13_flow_statistics/input.pcap --output TEST/assignment-02/A2-T13_flow_statistics/output.jsonl --flows-output TEST/assignment-02/A2-T13_flow_statistics/flows.jsonl` | PASS | `8bd2ef5` |
 | A2-T14 | Malformed event | [`A2-T14_malformed_event`](assignment-02/A2-T14_malformed_event/) | one run per file in `input/`, with `--unknown keep` into `output/` and with `--unknown drop` into `output_drop/` (see the case README) | PASS | `4aba51f` |
+| A3-T01 | Rule file with comments | [`A3-T01_rule_file_comments`](assignment-03/A3-T01_rule_file_comments/) | `python main.py --pcap TEST/assignment-03/A3-T01_rule_file_comments/input/traffic.pcap --rules-config TEST/assignment-03/A3-T01_rule_file_comments/input/rules.toml`, with the four output options (see the case README) | PASS |  |
 
 Add one row per test case when the case passes. Fill the commit column in a later commit, because a commit cannot hold its own hash. A retest adds its commit after the word "retest". The last hash in a row is the commit of the current evidence.
 
@@ -59,3 +60,5 @@ Use the test case ID and a short name: `TC-01_tcp_handshake`, `TC-12_malformed_p
 | `output/`, `output_drop/` | Instead of one output file: one output file per input file, for `--unknown keep` and for `--unknown drop`. |
 | `flows.jsonl` or `flows/` | The flow records of the run, in the cases that check flows. |
 | `console.txt` | The console summary of the run. |
+
+An Assignment 03 case holds `input/` (the pcap, the `.rules` file, and `rules.toml`) and `output/` (`events.jsonl`, `flows.jsonl`, `matches.jsonl`, `rules_report.jsonl`). `matches.jsonl` holds the rule matches, and `rules_report.jsonl` holds one line for each rule line. `console.txt` also holds the command and the exit code.

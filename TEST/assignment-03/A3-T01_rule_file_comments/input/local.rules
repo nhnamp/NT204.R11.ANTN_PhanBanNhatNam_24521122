@@ -1,0 +1,12 @@
+# Case 01: the loader skips comments and blank lines.
+
+# A comment that holds a rule. The loader must not read it.
+# alert tcp any any -> any 80 (msg:"Commented out"; content:"GET"; sid:100199; rev:1;)
+
+   # A comment with leading white space.
+
+alert tcp any any -> any 80 (msg:"GET request to port 80"; content:"GET "; depth:4; classtype:web-application-activity; priority:2; sid:100101; rev:1;)
+
+alert tcp any any -> any 80 (msg:"POST request to port 80"; content:"POST "; depth:5; classtype:web-application-activity; priority:2; sid:100102; rev:1;)
+	
+alert udp any any -> any 53 (msg:"DNS query for example.com"; content:"|07|example|03|com|00|"; classtype:bad-unknown; priority:3; sid:100103; rev:1;)
