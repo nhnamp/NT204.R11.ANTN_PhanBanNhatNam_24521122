@@ -4,7 +4,7 @@ import pytest
 
 from ids.engine import matcher
 from ids.engine.matcher import match
-from ids.engine.model import Content, FlowOption, PortRange, Rule
+from ids.engine.model import Content, DsizeOption, FlagsOption, FlowOption, PortRange, Rule
 from ids.stages.flow import FlowContext
 
 
@@ -120,3 +120,59 @@ def test_header_mismatch_does_not_run_content_matching(monkeypatch):
 
     monkeypatch.setattr(matcher, "_content_positions", fail)
     assert match(rule(contents=(content("x"),)), record(dst_port=81), b"x", None).failed_stage == "header"
+
+
+def flags_rule(flags, modifier=""):
+    return rule(flags=FlagsOption(frozenset(flags), modifier))
+
+
+@pytest.mark.parametrize(
+    "flags, modifier, present, expected",
+    [
+        (["SYN"], "", ["SYN"], True),
+        (["SYN"], "", ["SYN", "ACK"], False),
+        (["SYN"], "+", ["SYN", "ACK"], True),
+        (["SYN", "ACK"], "+", ["SYN"], False),
+        (["SYN", "FIN"], "*", ["ACK", "FIN"], True),
+        (["SYN", "FIN"], "*", ["ACK"], False),
+        (["RST"], "!", ["ACK"], True),
+        (["RST"], "!", ["RST", "ACK"], False),
+        ([], "", [], True),
+        ([], "", ["ACK"], False),
+    ],
+)
+def test_flags_modes(flags, modifier, present, expected):
+    result = match(flags_rule(flags, modifier), record(tcp_flags=present), b"", None)
+    assert result.matched is expected
+    assert result.failed_stage == (None if expected else "packet")
+
+
+def test_flags_never_match_udp():
+    assert not match(rule(protocol="udp", flags=FlagsOption(frozenset())), record(protocol="UDP"), b"", None).matched
+
+
+@pytest.mark.parametrize(
+    "option, size, expected",
+    [
+        (DsizeOption("=", 10), 10, True),
+        (DsizeOption("=", 10), 11, False),
+        (DsizeOption(">", 10), 10, False),
+        (DsizeOption(">", 10), 11, True),
+        (DsizeOption("<", 10), 9, True),
+        (DsizeOption("<", 10), 10, False),
+        (DsizeOption("<>", 10, 20), 10, True),
+        (DsizeOption("<>", 10, 20), 20, True),
+        (DsizeOption("<>", 10, 20), 21, False),
+    ],
+)
+def test_dsize_forms_at_their_limits(option, size, expected):
+    assert match(rule(dsize=option), record(payload_len=size), b"", None).matched is expected
+
+
+def test_packet_stage_runs_before_content_and_reports_its_items():
+    packet_rule = rule(flags=FlagsOption(frozenset({"PSH", "ACK"}), "+"), dsize=DsizeOption(">", 2), contents=(content("ab"),))
+    packet = record(tcp_flags=["ACK", "PSH"], payload_len=4)
+    assert [(i.keyword, i.value) for i in match(packet_rule, packet, b"xxab", None).items] == [
+        ("flags", "+PSH,ACK"), ("dsize", ">2"), ("content", "ab"),
+    ]
+    assert match(packet_rule, record(tcp_flags=["ACK"], payload_len=4), b"xxab", None).failed_stage == "packet"

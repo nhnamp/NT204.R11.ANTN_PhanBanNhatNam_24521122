@@ -2,8 +2,9 @@
 
 from ipaddress import AddressValueError, IPv4Address, IPv4Network
 
-from ids.engine.model import Content, FlowOption, MatchedItem, MatchResult, PortRange, Rule
+from ids.engine.model import Content, DsizeOption, FlagsOption, FlowOption, MatchedItem, MatchResult, PortRange, Rule
 from ids.stages.flow import CLOSING, ESTABLISHED, FlowContext
+from ids.stages.preprocessor import TCP_FLAGS
 
 _DIRECTIONS = {"to_server": "forward", "to_client": "backward"}
 
@@ -17,6 +18,14 @@ def match(rule: Rule, record: dict, payload: bytes, flow: FlowContext | None) ->
         if flow is None or not _flow_matches(rule.flow, flow):
             return MatchResult(rule.sid, False, "flow")
         items.append(MatchedItem("flow", _flow_text(rule.flow)))
+    if rule.flags is not None:
+        if not _flags_match(rule.flags, normalized):
+            return MatchResult(rule.sid, False, "packet")
+        items.append(MatchedItem("flags", _flags_text(rule.flags)))
+    if rule.dsize is not None:
+        if not _dsize_matches(rule.dsize, normalized.get("payload_len")):
+            return MatchResult(rule.sid, False, "packet")
+        items.append(MatchedItem("dsize", _dsize_text(rule.dsize)))
     positions = _content_positions(rule.contents, payload)
     if positions is None:
         return MatchResult(rule.sid, False, "content")
@@ -73,6 +82,41 @@ def _flow_text(option: FlowOption) -> str:
     if option.established is not None:
         parts.append("established" if option.established else "not_established")
     return ",".join(parts)
+
+
+def _flags_match(option: FlagsOption, normalized: dict) -> bool:
+    if (normalized.get("protocol") or "").upper() != "TCP":
+        return False
+    present = set(normalized.get("tcp_flags") or ())
+    if option.modifier == "+":
+        return option.flags <= present
+    if option.modifier == "*":
+        return bool(option.flags & present)
+    if option.modifier == "!":
+        return not option.flags & present
+    return option.flags == present
+
+
+def _flags_text(option: FlagsOption) -> str:
+    return option.modifier + (",".join(sorted(option.flags, key=TCP_FLAGS.index)) or "0")
+
+
+def _dsize_matches(option: DsizeOption, size: int | None) -> bool:
+    if size is None:
+        return False
+    if option.operator == ">":
+        return size > option.value
+    if option.operator == "<":
+        return size < option.value
+    if option.operator == "<>":
+        return option.value <= size <= (option.upper if option.upper is not None else option.value)
+    return size == option.value
+
+
+def _dsize_text(option: DsizeOption) -> str:
+    if option.operator == "<>":
+        return f"{option.value}<>{option.upper}"
+    return f"{'' if option.operator == '=' else option.operator}{option.value}"
 
 
 def _content_positions(contents: tuple[Content, ...], payload: bytes) -> list[int] | None:
