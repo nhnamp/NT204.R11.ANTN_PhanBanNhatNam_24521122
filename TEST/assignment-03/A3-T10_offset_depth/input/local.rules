@@ -1,0 +1,7 @@
+# Case 10: the payload is "GET /index.html HTTP/1.1". The word "index" starts at byte 5 and ends at byte 10.
+alert tcp any any -> any 80 (msg:"offset 5"; content:"index"; offset:5; sid:101001; rev:1;)
+alert tcp any any -> any 80 (msg:"offset 6"; content:"index"; offset:6; sid:101002; rev:1;)
+alert tcp any any -> any 80 (msg:"depth 10"; content:"index"; depth:10; sid:101003; rev:1;)
+alert tcp any any -> any 80 (msg:"depth 9"; content:"index"; depth:9; sid:101004; rev:1;)
+alert tcp any any -> any 80 (msg:"offset 5 depth 5"; content:"index"; offset:5; depth:5; sid:101005; rev:1;)
+alert tcp any any -> any 80 (msg:"offset 2 depth 5"; content:"index"; offset:2; depth:5; sid:101006; rev:1;)
