@@ -115,7 +115,8 @@ def main() -> int:
     checked = 0
     with tempfile.TemporaryDirectory() as temporary:
         output, flows = Path(temporary) / "output.jsonl", Path(temporary) / "flows.jsonl"
-        for folder in sorted(path for path in TEST_DIR.glob("assignment-*/*") if path.is_dir()):
+        # The rule engine cases hold rule files in input/, and their output has no base fields to compare.
+        for folder in sorted(path for path in TEST_DIR.glob("assignment-0[12]/*") if path.is_dir()):
             try:
                 checked += _check_folder(folder, output, flows)
             except Difference as exc:
