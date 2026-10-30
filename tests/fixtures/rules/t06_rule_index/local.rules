@@ -1,0 +1,6 @@
+# Case 06: one rule for each index list. All rules have the content of the three packets.
+alert ip any any -> any any (msg:"ip rule"; content:"index-probe"; sid:100601; rev:1;)
+alert tcp any any -> any 80 (msg:"tcp 80 rule"; content:"index-probe"; sid:100602; rev:1;)
+alert udp any any -> any 53 (msg:"udp 53 rule"; content:"index-probe"; sid:100603; rev:1;)
+alert tcp any any -> any any (msg:"tcp any rule"; content:"index-probe"; sid:100604; rev:1;)
+alert udp any 1024: -> any any (msg:"udp source port range rule"; content:"index-probe"; sid:100605; rev:1;)

@@ -1,0 +1,8 @@
+# Case 02: invalid rules. Each one has its own error. The valid rules go on matching.
+alert tcp any any -> any 80 (msg:"Missing sid"; content:"GET "; rev:1;)
+alert tcp any any -> any 70000 (msg:"Port above 65535"; content:"GET "; sid:100202; rev:1;)
+alert tcp any any -> any 80 (msg:"Depth smaller than the pattern"; content:"GET /index"; depth:3; sid:100203; rev:1;)
+alert tcp any any -> any (msg:"Header with 6 fields"; content:"GET "; sid:100204; rev:1;)
+alert tcp any any -> any 80 (msg:"GET request to port 80"; content:"GET "; depth:4; classtype:web-application-activity; priority:2; sid:100201; rev:1;)
+alert tcp any any -> any 80 (msg:"Second rule with the same sid"; content:"HTTP"; sid:100201; rev:1;)
+alert tcp any any -> any 80 (msg:"Host header example.com"; content:"Host|3A| example.com"; classtype:web-application-activity; priority:3; sid:100205; rev:1;)

@@ -1,0 +1,29 @@
+$ python main.py --pcap TEST/assignment-03/A3-T05_direction/input/traffic.pcap --rules-config TEST/assignment-03/A3-T05_direction/input/rules.toml --output TEST/assignment-03/A3-T05_direction/output/events.jsonl --flows-output TEST/assignment-03/A3-T05_direction/output/flows.jsonl --matches-output TEST/assignment-03/A3-T05_direction/output/matches.jsonl --rules-report TEST/assignment-03/A3-T05_direction/output/rules_report.jsonl
+packets read: 2
+events written: 2
+ok: 2
+partial: 0
+unsupported: 0
+malformed: 0
+other: 0
+preprocess valid: 2
+preprocess partial: 0
+preprocess invalid: 0
+preprocess other: 0
+dropped: 0
+flows written: 1
+rule files disabled: 0
+rules valid: 3
+rules invalid: 0
+rules unsupported: 0
+rules disabled: 0
+records evaluated: 2
+candidate rules: 6
+rejected by header: 2
+rejected by flow: 0
+rejected by packet options: 0
+rejected by content: 0
+rule matches: 4
+engine errors: 0
+elapsed: 0.001s
+exit code: 0

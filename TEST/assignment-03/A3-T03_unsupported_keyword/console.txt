@@ -1,0 +1,33 @@
+$ python main.py --pcap TEST/assignment-03/A3-T03_unsupported_keyword/input/traffic.pcap --rules-config TEST/assignment-03/A3-T03_unsupported_keyword/input/rules.toml --output TEST/assignment-03/A3-T03_unsupported_keyword/output/events.jsonl --flows-output TEST/assignment-03/A3-T03_unsupported_keyword/output/flows.jsonl --matches-output TEST/assignment-03/A3-T03_unsupported_keyword/output/matches.jsonl --rules-report TEST/assignment-03/A3-T03_unsupported_keyword/output/rules_report.jsonl
+warning: TEST/assignment-03/A3-T03_unsupported_keyword/input/local.rules:2: unsupported: keyword pcre
+warning: TEST/assignment-03/A3-T03_unsupported_keyword/input/local.rules:3: unsupported: keyword byte_test
+warning: TEST/assignment-03/A3-T03_unsupported_keyword/input/local.rules:4: unsupported: protocol icmp
+warning: TEST/assignment-03/A3-T03_unsupported_keyword/input/local.rules:5: unsupported: variable $HOME_NET
+packets read: 1
+events written: 1
+ok: 1
+partial: 0
+unsupported: 0
+malformed: 0
+other: 0
+preprocess valid: 1
+preprocess partial: 0
+preprocess invalid: 0
+preprocess other: 0
+dropped: 0
+flows written: 1
+rule files disabled: 0
+rules valid: 1
+rules invalid: 0
+rules unsupported: 4
+rules disabled: 0
+records evaluated: 1
+candidate rules: 1
+rejected by header: 0
+rejected by flow: 0
+rejected by packet options: 0
+rejected by content: 0
+rule matches: 1
+engine errors: 0
+elapsed: 0.001s
+exit code: 0

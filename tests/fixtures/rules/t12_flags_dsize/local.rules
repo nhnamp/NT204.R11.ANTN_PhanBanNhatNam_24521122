@@ -1,0 +1,11 @@
+# Case 12: six packets to port 4000. Flags: S, SA, PA, A, PA, none. Payload bytes: 0, 0, 10, 0, 100, 0.
+alert tcp any any -> any 4000 (msg:"flags S exact"; flags:S; sid:101201; rev:1;)
+alert tcp any any -> any 4000 (msg:"flags S+, S and any other flag"; flags:S+; sid:101202; rev:1;)
+alert tcp any any -> any 4000 (msg:"flags PA exact"; flags:PA; sid:101203; rev:1;)
+alert tcp any any -> any 4000 (msg:"flags !S, no S flag"; flags:!S; sid:101204; rev:1;)
+alert tcp any any -> any 4000 (msg:"flags 0, no flag"; flags:0; sid:101205; rev:1;)
+alert tcp any any -> any 4000 (msg:"dsize 10"; dsize:10; sid:101206; rev:1;)
+alert tcp any any -> any 4000 (msg:"dsize >10"; dsize:>10; sid:101207; rev:1;)
+alert tcp any any -> any 4000 (msg:"dsize <10"; dsize:<10; sid:101208; rev:1;)
+alert tcp any any -> any 4000 (msg:"dsize 10<>100"; dsize:10<>100; sid:101209; rev:1;)
+alert tcp any any -> any 4000 (msg:"dsize >100"; dsize:>100; sid:101210; rev:1;)

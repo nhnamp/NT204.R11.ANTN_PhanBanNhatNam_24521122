@@ -1,0 +1,4 @@
+# Case 09: the payload holds "/Admin/Login" with capital letters.
+alert tcp any any -> any 80 (msg:"admin, case sensitive"; content:"admin"; sid:100901; rev:1;)
+alert tcp any any -> any 80 (msg:"admin, nocase"; content:"admin"; nocase; sid:100902; rev:1;)
+alert tcp any any -> any 80 (msg:"Admin, case sensitive, same case as the payload"; content:"Admin"; sid:100903; rev:1;)

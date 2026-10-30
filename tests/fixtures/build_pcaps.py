@@ -943,6 +943,103 @@ def write_fixture(path: Path, packets: list[Packet], offsets: list[float] | None
     wrpcap(str(path), packets)
 
 
+RULES_DIR = FIXTURE_DIR / "rules"
+
+
+def _mac(address: str) -> str:
+    return "02:00:00:00:00:" + format(int(address.rsplit(".", 1)[1]) % 256, "02x")
+
+
+def _tcp_frame(src: tuple, dst: tuple, flags: str, payload: bytes = b"", seq: int = 1000, ack: int = 0) -> Packet:
+    """Build one TCP frame. `src` and `dst` are (address, port) pairs."""
+    frame = Ether(src=_mac(src[0]), dst=_mac(dst[0])) / IP(src=src[0], dst=dst[0], proto=6)
+    frame = frame / TCP(sport=src[1], dport=dst[1], flags=flags, seq=seq, ack=ack)
+    return frame / Raw(payload) if payload else frame
+
+
+def _udp_frame(src: tuple, dst: tuple, payload: bytes) -> Packet:
+    frame = Ether(src=_mac(src[0]), dst=_mac(dst[0])) / IP(src=src[0], dst=dst[0], proto=17)
+    return frame / UDP(sport=src[1], dport=dst[1]) / Raw(payload)
+
+
+RULE_CLIENT = ("10.0.0.1", 40000)
+RULE_SERVER = ("10.0.0.2", 80)
+GET_REQUEST = b"GET /index.html HTTP/1.1\r\nHost: example.com\r\n\r\n"
+
+
+def _rule_case_packets() -> dict[str, list[Packet]]:
+    """Build the packets of the rule engine cases, keyed by case folder."""
+    request = [_tcp_frame(RULE_CLIENT, RULE_SERVER, "PA", GET_REQUEST, seq=1001, ack=5001)]
+    response_payload = b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
+    next_sequence = 1001 + len(GET_REQUEST)
+    other_client = ("10.0.0.3", 41000)
+    probe = ("10.0.0.1", 50000)
+    probe_server = ("10.0.0.2", 4000)
+    traversal_client = ("10.0.0.5", 52133)
+    traversal_server = ("192.168.1.20", 80)
+    login = b"POST /login HTTP/1.1\r\nHost: example.com\r\nContent-Length: 19\r\n\r\nuser=admin' OR 1=1;"
+    traversal = b"GET /files/../etc/passwd HTTP/1.1\r\nHost: example.com\r\n\r\n"
+    return {
+        "t01_rule_file_comments": request,
+        "t02_invalid_rule": request,
+        "t03_unsupported_keyword": request,
+        "t04_rule_header": request,
+        "t05_direction": [
+            *request,
+            _tcp_frame(RULE_SERVER, RULE_CLIENT, "PA", response_payload, seq=5001, ack=next_sequence),
+        ],
+        "t06_rule_index": [
+            _tcp_frame(RULE_CLIENT, RULE_SERVER, "PA", b"index-probe"),
+            _udp_frame(RULE_CLIENT, ("10.0.0.2", 53), b"index-probe"),
+            _tcp_frame(RULE_CLIENT, ("10.0.0.2", 22), "PA", b"index-probe"),
+        ],
+        "t07_header_mismatch": request,
+        "t08_flow_established": [
+            _tcp_frame(RULE_CLIENT, RULE_SERVER, "S", seq=1000),
+            _tcp_frame(RULE_SERVER, RULE_CLIENT, "SA", seq=5000, ack=1001),
+            _tcp_frame(RULE_CLIENT, RULE_SERVER, "A", seq=1001, ack=5001),
+            *request,
+            _tcp_frame(RULE_SERVER, RULE_CLIENT, "PA", response_payload, seq=5001, ack=next_sequence),
+            _tcp_frame(other_client, RULE_SERVER, "S", seq=2000),
+        ],
+        "t09_content_nocase": [
+            _tcp_frame(RULE_CLIENT, RULE_SERVER, "PA", b"GET /Admin/Login HTTP/1.1\r\n\r\n", seq=1001, ack=5001)
+        ],
+        "t10_offset_depth": [
+            _tcp_frame(RULE_CLIENT, RULE_SERVER, "PA", b"GET /index.html HTTP/1.1\r\n\r\n", seq=1001, ack=5001)
+        ],
+        "t11_distance_within": [
+            _tcp_frame(RULE_CLIENT, RULE_SERVER, "PA", b"id=1&id=22&name=bob", seq=1001, ack=5001)
+        ],
+        "t12_flags_dsize": [
+            _tcp_frame(probe, probe_server, "S", seq=1000),
+            _tcp_frame(probe, probe_server, "SA", seq=1001),
+            _tcp_frame(probe, probe_server, "PA", b"0123456789", seq=1002),
+            _tcp_frame(probe, probe_server, "A", seq=1012),
+            _tcp_frame(probe, probe_server, "PA", b"x" * 100, seq=1012),
+            _tcp_frame(probe, probe_server, "", seq=1112),
+        ],
+        "t13_multiple_matches": [
+            _tcp_frame(RULE_CLIENT, RULE_SERVER, "PA", login, seq=1001, ack=5001),
+            _tcp_frame(RULE_CLIENT, RULE_SERVER, "PA", GET_REQUEST, seq=1001 + len(login), ack=5001),
+        ],
+        "t14_match_record": [
+            _tcp_frame(traversal_client, traversal_server, "S", seq=1000),
+            _tcp_frame(traversal_server, traversal_client, "SA", seq=5000, ack=1001),
+            _tcp_frame(traversal_client, traversal_server, "A", seq=1001, ack=5001),
+            _tcp_frame(traversal_client, traversal_server, "PA", traversal, seq=1001, ack=5001),
+        ],
+    }
+
+
+def build_rule_cases() -> None:
+    """Write `traffic.pcap` into the folder of each rule engine case. The `.rules` and `rules.toml` files are committed by hand."""
+    for case, packets in _rule_case_packets().items():
+        folder = RULES_DIR / case
+        folder.mkdir(parents=True, exist_ok=True)
+        write_fixture(folder / "traffic.pcap", packets)
+
+
 def build_all() -> None:
     everything: list[Packet] = []
     for name, build_packets in FIXTURES.items():
@@ -951,6 +1048,7 @@ def build_all() -> None:
     write_fixture(FIXTURE_DIR / "all.pcap", everything)
     build_malformed()
     build_events()
+    build_rule_cases()
 
 
 if __name__ == "__main__":

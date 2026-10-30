@@ -1,0 +1,5 @@
+# Case 05: direction. Packet 1 is the request, 10.0.0.1:40000 -> 10.0.0.2:80. Packet 2 is the response.
+# Every rule has the same content, which both packets hold. Only the header can tell them apart.
+alert tcp 10.0.0.1 any -> 10.0.0.2 80 (msg:"One way, client to server"; content:"HTTP/1.1"; sid:100501; rev:1;)
+alert tcp 10.0.0.1 any <> 10.0.0.2 80 (msg:"Both ways, client and server"; content:"HTTP/1.1"; sid:100502; rev:1;)
+alert tcp 10.0.0.2 80 -> 10.0.0.1 any (msg:"One way, server to client"; content:"HTTP/1.1"; sid:100503; rev:1;)

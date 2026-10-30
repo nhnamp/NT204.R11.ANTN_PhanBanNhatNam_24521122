@@ -1,0 +1,5 @@
+# Case 13: packet 1 is a POST to /login with "OR 1=1" in the body. Packet 2 is a plain GET.
+alert tcp any any -> any 80 (msg:"HTTP POST to login page"; content:"POST"; depth:4; content:"/login"; distance:1; within:6; classtype:web-application-activity; priority:2; sid:101301; rev:1;)
+alert tcp any any -> any 80 (msg:"SQL injection text OR 1=1"; content:"or 1=1"; nocase; classtype:web-application-attack; priority:1; sid:101302; rev:1;)
+alert tcp any any -> any 80 (msg:"HTTP/1.1 request"; content:"HTTP/1.1"; classtype:misc-activity; priority:3; sid:101303; rev:1;)
+alert tcp any any -> any 80 (msg:"HTTP DELETE request"; content:"DELETE"; depth:6; classtype:web-application-attack; priority:2; sid:101304; rev:1;)
