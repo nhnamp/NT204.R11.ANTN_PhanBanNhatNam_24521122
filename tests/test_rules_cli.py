@@ -73,3 +73,12 @@ def test_the_engine_outputs_join_the_same_file_checks_and_preview_warns(tmp_path
     assert "--matches-output and --rules-report name the same file" in capsys.readouterr().err
     assert run(parse_args([*args, "--payload", "preview"])) == 0
     assert "--payload preview" in capsys.readouterr().err
+
+
+def test_an_output_on_a_rule_file_stops_the_run_and_keeps_the_rules(tmp_path, capsys):
+    argv = setup(tmp_path)
+    argv[argv.index("--matches-output") + 1] = str(tmp_path / "a.rules")
+
+    assert run(parse_args(argv)) == 1
+    assert "--matches-output names a rule file" in capsys.readouterr().err
+    assert (tmp_path / "a.rules").read_text(encoding="utf-8") == RULES

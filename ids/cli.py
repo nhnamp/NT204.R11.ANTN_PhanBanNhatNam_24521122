@@ -164,6 +164,11 @@ def run(config: Config) -> int:
     except RuleConfigError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+    # parse_args cannot see the rule files, because only the config names them. The writers below would truncate one.
+    clash = _output_on_rule_file(config, engine.loaded) if engine is not None else None
+    if clash is not None:
+        print(f"error: {clash} names a rule file", file=sys.stderr)
+        return 1
     source = _build_source(config)
 
     pipeline = Pipeline(config, source.describe())
@@ -262,6 +267,20 @@ def _load_engine(config: Config) -> _Engine:
             file=sys.stderr,
         )
     return _Engine(Evaluator(repository), report, loaded)
+
+
+def _output_on_rule_file(config: Config, loaded: LoadedRules) -> str | None:
+    rule_files = {path for path, _, _ in loaded.lines}
+    outputs = (
+        ("--output", config.output),
+        ("--flows-output", config.flows_output),
+        ("--matches-output", config.matches_output),
+        ("--rules-report", config.rules_report),
+    )
+    for name, path in outputs:
+        if any(_same_file(path, rule_file) for rule_file in rule_files):
+            return name
+    return None
 
 
 def _write_matches(evaluator: Evaluator, enricher: Enricher, output: dict, writer: JsonLinesWriter) -> None:
