@@ -1,0 +1,8 @@
+# Case 04: one rule for each header form. The packet is 10.0.0.1:40000 -> 10.0.0.2:80.
+alert tcp any any -> any any (msg:"Form any"; content:"GET "; depth:4; sid:100401; rev:1;)
+alert tcp 10.0.0.1 any -> 10.0.0.2 any (msg:"Form single IP"; content:"GET "; depth:4; sid:100402; rev:1;)
+alert tcp 10.0.0.0/24 any -> 192.168.0.0/16 any (msg:"Form CIDR"; content:"GET "; depth:4; sid:100403; rev:1;)
+alert tcp any any -> any 80 (msg:"Form single port"; content:"GET "; depth:4; sid:100404; rev:1;)
+alert tcp any any -> any 8000:8100 (msg:"Form port range a:b"; content:"GET "; depth:4; sid:100405; rev:1;)
+alert tcp any 1024: -> any any (msg:"Form open range a:"; content:"GET "; depth:4; sid:100406; rev:1;)
+alert tcp any :1023 -> any any (msg:"Form open range :b"; content:"GET "; depth:4; sid:100407; rev:1;)
