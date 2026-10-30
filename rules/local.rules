@@ -1,0 +1,25 @@
+# Demo rules. Each rule names a fixture pcap in tests/fixtures/ that it matches.
+
+# tests/fixtures/normalization.pcap, packet 1: GET /a/%2e%2e/b
+alert tcp any any -> any 80 (msg:"Directory traversal in HTTP request"; flow:to_server,established; content:"%2e%2e"; nocase; classtype:web-application-attack; priority:1; sid:100001; rev:1;)
+
+# tests/fixtures/http_percent.pcap, packet 1: GET /search?q=%27%20OR%201%3D1
+alert tcp any any -> any 80 (msg:"SQL injection text in HTTP request"; content:"GET "; depth:4; content:"OR%201%3D1"; nocase; classtype:web-application-attack; priority:1; sid:100002; rev:1;)
+
+# tests/fixtures/http_get.pcap, packet 1: User-Agent: NT204/1.0
+alert tcp any any -> any 80 (msg:"Suspicious User-Agent NT204"; content:"User-Agent|3A| NT204"; nocase; classtype:policy-violation; priority:3; sid:100003; rev:1;)
+
+# tests/fixtures/dns_query.pcap, packet 1: query for example.com
+alert udp any any -> any 53 (msg:"DNS query for test domain example.com"; content:"|07|example|03|com|00|"; nocase; classtype:bad-unknown; priority:3; sid:100004; rev:1;)
+
+# tests/fixtures/flow_stats.pcap, packet 1: SYN to port 4444
+alert tcp any any -> any 4444 (msg:"SYN to closed service port 4444"; flags:S; dsize:0; classtype:attempted-recon; priority:2; sid:100005; rev:1;)
+
+# tests/fixtures/smtp_session.pcap, packet 4: MAIL FROM:<alice@example.com>
+alert tcp any any -> any 25 (msg:"SMTP MAIL FROM command"; content:"MAIL FROM|3A|"; depth:10; classtype:protocol-command-decode; priority:3; sid:100006; rev:1;)
+
+# tests/fixtures/http_post.pcap, packet 1: POST /login
+alert tcp any any -> any 80 (msg:"HTTP POST to login page"; content:"POST"; depth:4; content:"/login"; distance:1; within:6; classtype:web-application-activity; priority:2; sid:100007; rev:1;)
+
+# tests/fixtures/http_get.pcap, packet 1: any GET request. rules.toml disables this rule by sid.
+alert tcp any any -> any 80 (msg:"Any HTTP GET request"; content:"GET "; depth:4; sid:100008; rev:1;)
