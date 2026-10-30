@@ -1,7 +1,7 @@
 # Demo rules. Each rule names a fixture pcap in tests/fixtures/ that it matches.
 
 # tests/fixtures/normalization.pcap, packet 1: GET /a/%2e%2e/b
-alert tcp any any -> any 80 (msg:"Directory traversal in HTTP request"; flow:to_server,established; content:"%2e%2e"; nocase; classtype:web-application-attack; priority:1; sid:100001; rev:1;)
+alert tcp any any -> any 80 (msg:"Encoded directory traversal in HTTP request"; flow:to_server,established; content:"%2e%2e"; nocase; classtype:web-application-attack; priority:1; sid:100001; rev:1;)
 
 # tests/fixtures/http_percent.pcap, packet 1: GET /search?q=%27%20OR%201%3D1
 alert tcp any any -> any 80 (msg:"SQL injection text in HTTP request"; content:"GET "; depth:4; content:"OR%201%3D1"; nocase; classtype:web-application-attack; priority:1; sid:100002; rev:1;)
