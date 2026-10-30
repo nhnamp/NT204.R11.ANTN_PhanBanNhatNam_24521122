@@ -2,8 +2,9 @@ from ipaddress import IPv4Network
 
 import pytest
 
+from ids.engine import matcher
 from ids.engine.matcher import match
-from ids.engine.model import FlowOption, PortRange, Rule
+from ids.engine.model import Content, FlowOption, PortRange, Rule
 from ids.stages.flow import FlowContext
 
 
@@ -76,3 +77,46 @@ def test_udp_established_needs_packets_in_both_directions():
 def test_header_mismatch_stops_before_flow():
     result = match(rule(flow=FlowOption("to_server", None)), record(dst_port=81), b"", None)
     assert result.failed_stage == "header"
+
+
+def content(text, **modifiers):
+    return Content(text, text.encode(), **modifiers)
+
+
+def test_content_is_case_sensitive_unless_nocase():
+    payload = b"GET /Admin HTTP/1.1"
+    assert match(rule(contents=(content("/Admin"),)), record(), payload, None).matched
+    exact = match(rule(contents=(content("/admin"),)), record(), payload, None)
+    assert (exact.matched, exact.failed_stage) == (False, "content")
+    folded = match(rule(contents=(content("/admin", nocase=True),)), record(), payload, None)
+    assert [(item.keyword, item.value, item.position) for item in folded.items] == [("content", "/admin", 4)]
+
+
+def test_offset_and_depth_limit_the_region_from_the_buffer_start():
+    payload = b"xxGETxxxxxxxxxxGET"
+    assert match(rule(contents=(content("GET", offset=2, depth=3),)), record(), payload, None).matched
+    assert match(rule(contents=(content("GET", offset=3),)), record(), payload, None).items[0].position == 15
+    assert not match(rule(contents=(content("GET", depth=4),)), record(), payload, None).matched
+    assert not match(rule(contents=(content("GET", offset=3, depth=5),)), record(), payload, None).matched
+
+
+def test_distance_and_within_start_at_the_end_of_the_previous_content():
+    payload = b"USER bob PASS secret"
+    chain = lambda **modifiers: rule(contents=(content("USER"), content("PASS", **modifiers)))
+    assert match(chain(distance=1, within=9), record(), payload, None).matched
+    assert not match(chain(distance=6), record(), payload, None).matched
+    assert not match(chain(within=8), record(), payload, None).matched
+
+
+def test_relative_content_tries_a_later_occurrence_of_the_first_content():
+    payload = b"AB.xxxxxxxxAB..CD"
+    result = match(rule(contents=(content("AB"), content("CD", distance=2, within=2))), record(), payload, None)
+    assert [item.position for item in result.items] == [11, 15]
+
+
+def test_header_mismatch_does_not_run_content_matching(monkeypatch):
+    def fail(*args):
+        raise AssertionError("content matching ran")
+
+    monkeypatch.setattr(matcher, "_content_positions", fail)
+    assert match(rule(contents=(content("x"),)), record(dst_port=81), b"x", None).failed_stage == "header"

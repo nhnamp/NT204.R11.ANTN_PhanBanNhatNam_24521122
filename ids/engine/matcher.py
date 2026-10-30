@@ -2,7 +2,7 @@
 
 from ipaddress import AddressValueError, IPv4Address, IPv4Network
 
-from ids.engine.model import FlowOption, MatchedItem, MatchResult, PortRange, Rule
+from ids.engine.model import Content, FlowOption, MatchedItem, MatchResult, PortRange, Rule
 from ids.stages.flow import CLOSING, ESTABLISHED, FlowContext
 
 _DIRECTIONS = {"to_server": "forward", "to_client": "backward"}
@@ -17,6 +17,10 @@ def match(rule: Rule, record: dict, payload: bytes, flow: FlowContext | None) ->
         if flow is None or not _flow_matches(rule.flow, flow):
             return MatchResult(rule.sid, False, "flow")
         items.append(MatchedItem("flow", _flow_text(rule.flow)))
+    positions = _content_positions(rule.contents, payload)
+    if positions is None:
+        return MatchResult(rule.sid, False, "content")
+    items.extend(MatchedItem("content", content.text, position) for content, position in zip(rule.contents, positions))
     return MatchResult(rule.sid, True, items=tuple(items))
 
 
@@ -69,3 +73,37 @@ def _flow_text(option: FlowOption) -> str:
     if option.established is not None:
         parts.append("established" if option.established else "not_established")
     return ",".join(parts)
+
+
+def _content_positions(contents: tuple[Content, ...], payload: bytes) -> list[int] | None:
+    """Return the start of every content, or `None`. Each content tries all its occurrences, so a later one can still fit."""
+    if not contents:
+        return []
+    return _place(contents, 0, 0, payload, payload.lower())
+
+
+def _place(contents: tuple[Content, ...], index: int, previous_end: int, payload: bytes, lowered: bytes) -> list[int] | None:
+    if index == len(contents):
+        return []
+    content = contents[index]
+    buffer, pattern = (lowered, content.pattern.lower()) if content.nocase else (payload, content.pattern)
+    start, end = _region(content, previous_end, len(buffer))
+    position = buffer.find(pattern, start, end)
+    while position != -1:
+        rest = _place(contents, index + 1, position + len(pattern), payload, lowered)
+        if rest is not None:
+            return [position, *rest]
+        position = buffer.find(pattern, position + 1, end)
+    return None
+
+
+def _region(content: Content, previous_end: int, size: int) -> tuple[int, int]:
+    """Return the search window. `within` and `depth` limit the bytes that the whole pattern must fit in."""
+    if content.distance is not None or content.within is not None:
+        start = max(previous_end + (content.distance or 0), 0)
+        length = content.within
+    else:
+        start = content.offset or 0
+        length = content.depth
+    end = size if length is None else min(start + length, size)
+    return start, end
