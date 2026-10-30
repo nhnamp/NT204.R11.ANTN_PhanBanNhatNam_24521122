@@ -1,0 +1,6 @@
+# Case 07: the packet is 10.0.0.1:40000 -> 10.0.0.2:80 and holds "GET ".
+# Rules 100701 to 100703 pass the index (tcp, port 80), fail on the address, and would match the content.
+alert tcp 192.168.1.5 any -> any 80 (msg:"Wrong source IP"; content:"GET "; depth:4; sid:100701; rev:1;)
+alert tcp any any -> 172.16.0.0/12 80 (msg:"Wrong destination CIDR"; content:"GET "; depth:4; sid:100702; rev:1;)
+alert tcp 10.0.0.1 any -> 10.0.0.3 80 (msg:"Wrong destination IP"; content:"GET "; depth:4; sid:100703; rev:1;)
+alert tcp 10.0.0.0/24 any -> 10.0.0.2 80 (msg:"Control rule with the right header"; content:"GET "; depth:4; sid:100704; rev:1;)
