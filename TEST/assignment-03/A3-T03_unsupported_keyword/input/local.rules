@@ -1,0 +1,6 @@
+# Case 03: keywords outside the supported scope. The engine marks them unsupported and goes on.
+alert tcp any any -> any 80 (msg:"pcre keyword"; pcre:"/GET\s+\/index/"; sid:100301; rev:1;)
+alert tcp any any -> any 80 (msg:"byte_test keyword"; content:"GET"; byte_test:1,>,64,0; sid:100302; rev:1;)
+alert icmp any any -> any any (msg:"ICMP protocol"; itype:8; sid:100303; rev:1;)
+alert tcp $HOME_NET any -> any 80 (msg:"Variable in the header"; content:"GET"; sid:100304; rev:1;)
+alert tcp any any -> any 80 (msg:"GET request to port 80"; content:"GET "; depth:4; classtype:web-application-activity; priority:2; sid:100305; rev:1;)

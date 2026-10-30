@@ -38,6 +38,7 @@ This directory holds the graded evidence. Each assignment has its own folder: `a
 | A2-T14 | Malformed event | [`A2-T14_malformed_event`](assignment-02/A2-T14_malformed_event/) | one run per file in `input/`, with `--unknown keep` into `output/` and with `--unknown drop` into `output_drop/` (see the case README) | PASS | `4aba51f` |
 | A3-T01 | Rule file with comments | [`A3-T01_rule_file_comments`](assignment-03/A3-T01_rule_file_comments/) | `python main.py --pcap TEST/assignment-03/A3-T01_rule_file_comments/input/traffic.pcap --rules-config TEST/assignment-03/A3-T01_rule_file_comments/input/rules.toml`, with the four output options (see the case README) | PASS |  |
 | A3-T02 | Invalid rule | [`A3-T02_invalid_rule`](assignment-03/A3-T02_invalid_rule/) | `python main.py --pcap TEST/assignment-03/A3-T02_invalid_rule/input/traffic.pcap --rules-config TEST/assignment-03/A3-T02_invalid_rule/input/rules.toml`, with the four output options (see the case README) | PASS |  |
+| A3-T03 | Unsupported keyword | [`A3-T03_unsupported_keyword`](assignment-03/A3-T03_unsupported_keyword/) | `python main.py --pcap TEST/assignment-03/A3-T03_unsupported_keyword/input/traffic.pcap --rules-config TEST/assignment-03/A3-T03_unsupported_keyword/input/rules.toml`, with the four output options (see the case README) | PASS |  |
 
 Add one row per test case when the case passes. Fill the commit column in a later commit, because a commit cannot hold its own hash. A retest adds its commit after the word "retest". The last hash in a row is the commit of the current evidence.
 
