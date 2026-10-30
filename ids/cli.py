@@ -1,13 +1,15 @@
 """Parse arguments, then wire a capture source to the pipeline and the writer."""
 
 import argparse
+import contextlib
+import itertools
 import logging
 import math
 import sys
 import time
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, get_args
+from typing import Any, NamedTuple, get_args
 
 from ids.capture.base import PacketSource
 from ids.capture.events import EventFileSource
@@ -15,6 +17,12 @@ from ids.capture.live import LiveSource
 from ids.capture.pcap import PcapSource
 from ids.config import Config
 from ids.contract import PREPROCESS_STATUSES
+from ids.engine.evaluator import Evaluator
+from ids.engine.generator import build_rule_match
+from ids.engine.loader import LoadedRules, RuleConfigError, load_rules
+from ids.engine.model import ParsedRule
+from ids.engine.parser import parse_rule
+from ids.engine.repository import RuleRepository
 from ids.enrich import Enricher, fallback_record, input_failure
 from ids.events import Status
 from ids.output import JsonLinesWriter
@@ -91,6 +99,24 @@ def build_parser() -> argparse.ArgumentParser:
         default=Config.flows_output,
         help="write flow records to FILE (default: %(default)s)",
     )
+    parser.add_argument(
+        "--rules-config",
+        metavar="FILE",
+        default=None,
+        help="read the rule config FILE and turn on the rule engine",
+    )
+    parser.add_argument(
+        "--matches-output",
+        metavar="FILE",
+        default=Config.matches_output,
+        help="write rule match records to FILE (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--rules-report",
+        metavar="FILE",
+        default=Config.rules_report,
+        help="write one line per rule line to FILE (default: %(default)s)",
+    )
     return parser
 
 
@@ -98,10 +124,17 @@ def parse_args(argv: list[str] | None = None) -> Config:
     parser = build_parser()
     args = parser.parse_args(argv)
     # Two writers on one file truncate it together, and an output on the input file empties the input.
-    if _same_file(args.output, args.flows_output):
-        parser.error("--output and --flows-output name the same file")
-    for name, path in (("--output", args.output), ("--flows-output", args.flows_output)):
-        for source in (args.pcap, args.events):
+    outputs = [("--output", args.output), ("--flows-output", args.flows_output)]
+    inputs = [args.pcap, args.events]
+    # The two engine outputs are not created without a rule config, so they take part only when it is given.
+    if args.rules_config is not None:
+        outputs += [("--matches-output", args.matches_output), ("--rules-report", args.rules_report)]
+        inputs.append(args.rules_config)
+    for (first_name, first), (second_name, second) in itertools.combinations(outputs, 2):
+        if _same_file(first, second):
+            parser.error(f"{first_name} and {second_name} name the same file")
+    for name, path in outputs:
+        for source in inputs:
             if source is not None and _same_file(path, source):
                 parser.error(f"{name} names the input file")
     return Config(
@@ -117,12 +150,20 @@ def parse_args(argv: list[str] | None = None) -> Config:
         udp_timeout=args.udp_timeout,
         max_flows=args.max_flows,
         flows_output=args.flows_output,
+        rules_config=args.rules_config,
+        matches_output=args.matches_output,
+        rules_report=args.rules_report,
     )
 
 
 def run(config: Config) -> int:
     # Scapy logs its own dissection warnings, such as a DNS pointer loop. The events already report these faults.
     logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
+    try:
+        engine = _load_engine(config) if config.rules_config is not None else None
+    except RuleConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     source = _build_source(config)
 
     pipeline = Pipeline(config, source.describe())
@@ -135,7 +176,17 @@ def run(config: Config) -> int:
     counts = dict.fromkeys((*STATUSES, "other"), 0)
     preprocess_counts = dict.fromkeys((*PREPROCESS_STATUSES, "other"), 0)
     try:
-        with JsonLinesWriter(config.output) as writer, JsonLinesWriter(config.flows_output) as flow_writer:
+        with (
+            JsonLinesWriter(config.output) as writer,
+            JsonLinesWriter(config.flows_output) as flow_writer,
+            contextlib.ExitStack() as engine_files,
+        ):
+            match_writer = None
+            if engine is not None:
+                match_writer = engine_files.enter_context(JsonLinesWriter(config.matches_output))
+                with JsonLinesWriter(config.rules_report) as report_writer:
+                    for entry in engine.report:
+                        report_writer.write(_report_line(entry))
             try:
                 for item in source:
                     read += 1
@@ -144,7 +195,9 @@ def run(config: Config) -> int:
                         enricher.process(record, input_errors) if record is not None else (None, [])
                     )
                     flows_written += _write_flows(flow_writer, exported)
-                    result = _write_record(writer, output) if output is not None else None
+                    if match_writer is not None and output is not None:
+                        _write_matches(engine.evaluator, enricher, output, match_writer)
+                    result =_write_record(writer, output) if output is not None else None
                     if result is None:
                         dropped += 1
                     else:
@@ -177,10 +230,72 @@ def run(config: Config) -> int:
         f"dropped: {dropped}",
         f"flows written: {flows_written}",
         f"elapsed: {elapsed:.3f}s",
+        *(_engine_summary(engine) if engine is not None else []),
         sep="\n",
         file=sys.stderr,
     )
     return 0
+
+
+class _Engine(NamedTuple):
+    evaluator: Evaluator
+    report: list[ParsedRule]
+    loaded: LoadedRules
+
+
+def _load_engine(config: Config) -> _Engine:
+    """Load, parse and index the rules once. Print one warning for each rule and file that the engine cannot use."""
+    loaded = load_rules(config.rules_config)
+    parsed = [parse_rule(*line) for line in loaded.lines]
+    repository = RuleRepository(parsed, loaded.disabled_sids)
+    # The repository rejects a duplicate or disabled entry as a copy of the same line, so file and line find it.
+    rejected = {(entry.file, entry.line): entry for entry in repository.rejected}
+    report = [rejected.get((entry.file, entry.line), entry) for entry in parsed]
+    for warning in loaded.warnings:
+        print(f"warning: {warning}", file=sys.stderr)
+    for entry in report:
+        if entry.status in ("invalid", "unsupported"):
+            print(f"warning: {entry.file}:{entry.line}: {entry.status}: {entry.reason}", file=sys.stderr)
+    if config.payload == "preview":
+        print(
+            "warning: --payload preview stores 64 bytes, so content matching sees only the preview",
+            file=sys.stderr,
+        )
+    return _Engine(Evaluator(repository), report, loaded)
+
+
+def _report_line(entry: ParsedRule) -> dict:
+    return {key: value for key, value in entry.to_dict().items() if key != "text"}
+
+
+def _write_matches(evaluator: Evaluator, enricher: Enricher, output: dict, writer: JsonLinesWriter) -> None:
+    """Write one rule match record for each rule that matches. A failure counts as an engine error and the run goes on."""
+    try:
+        flow = enricher.flow_context(output)
+        records = [
+            build_rule_match(rule, output, flow, result).to_dict() for rule, result in evaluator.evaluate(output, flow)
+        ]
+        for record in records:
+            writer.write(record)
+    except Exception:
+        evaluator.engine_errors += 1
+
+
+def _engine_summary(engine: _Engine) -> list[str]:
+    statuses = [entry.status for entry in engine.report]
+    evaluator = engine.evaluator
+    return [
+        f"rule files disabled: {engine.loaded.files_disabled}",
+        *[f"rules {status}: {statuses.count(status)}" for status in ("valid", "invalid", "unsupported", "disabled")],
+        f"records evaluated: {evaluator.records_evaluated}",
+        f"candidate rules: {evaluator.candidate_rules}",
+        f"rejected by header: {evaluator.rejected['header']}",
+        f"rejected by flow: {evaluator.rejected['flow']}",
+        f"rejected by packet options: {evaluator.rejected['packet']}",
+        f"rejected by content: {evaluator.rejected['content']}",
+        f"rule matches: {evaluator.rule_matches}",
+        f"engine errors: {evaluator.engine_errors}",
+    ]
 
 
 def _to_record(item: Any, pipeline: Pipeline, source_name: str) -> tuple[dict | None, list[dict]]:

@@ -20,3 +20,6 @@ class Config:
     udp_timeout: float = 30.0
     max_flows: int = 100_000
     flows_output: str = "flows.jsonl"
+    rules_config: str | None = None
+    matches_output: str = "matches.jsonl"
+    rules_report: str = "rules_report.jsonl"
