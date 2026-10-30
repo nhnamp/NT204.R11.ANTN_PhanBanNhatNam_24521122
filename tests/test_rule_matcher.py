@@ -176,3 +176,8 @@ def test_packet_stage_runs_before_content_and_reports_its_items():
         ("flags", "+PSH,ACK"), ("dsize", ">2"), ("content", "ab"),
     ]
     assert match(packet_rule, record(tcp_flags=["ACK"], payload_len=4), b"xxab", None).failed_stage == "packet"
+
+
+def test_relative_search_stays_bounded_when_the_last_content_is_absent():
+    chain = (content("a"), content("a", distance=0), content("a", distance=0), content("z", distance=0))
+    assert not match(rule(contents=chain), record(), b"a" * 4096, None).matched

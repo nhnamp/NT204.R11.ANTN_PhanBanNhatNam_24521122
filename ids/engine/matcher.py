@@ -123,21 +123,27 @@ def _content_positions(contents: tuple[Content, ...], payload: bytes) -> list[in
     """Return the start of every content, or `None`. Each content tries all its occurrences, so a later one can still fit."""
     if not contents:
         return []
-    return _place(contents, 0, 0, payload, payload.lower())
+    return _place(contents, 0, 0, payload, payload.lower(), set())
 
 
-def _place(contents: tuple[Content, ...], index: int, previous_end: int, payload: bytes, lowered: bytes) -> list[int] | None:
+def _place(
+    contents: tuple[Content, ...], index: int, previous_end: int, payload: bytes, lowered: bytes, failed: set
+) -> list[int] | None:
+    # The result depends only on index and previous_end, so a failed pair never needs a second search.
     if index == len(contents):
         return []
+    if (index, previous_end) in failed:
+        return None
     content = contents[index]
     buffer, pattern = (lowered, content.pattern.lower()) if content.nocase else (payload, content.pattern)
     start, end = _region(content, previous_end, len(buffer))
     position = buffer.find(pattern, start, end)
     while position != -1:
-        rest = _place(contents, index + 1, position + len(pattern), payload, lowered)
+        rest = _place(contents, index + 1, position + len(pattern), payload, lowered, failed)
         if rest is not None:
             return [position, *rest]
         position = buffer.find(pattern, position + 1, end)
+    failed.add((index, previous_end))
     return None
 
 
