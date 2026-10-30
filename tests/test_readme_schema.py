@@ -7,7 +7,7 @@ import pytest
 from ids.contract import BASE_FIELDS, ENRICHMENT_FIELDS, PAYLOAD_FIELD, empty_normalized
 
 ROOT = Path(__file__).resolve().parents[1]
-FLOW_EVIDENCE = ROOT / "TEST" / "A2-T13_flow_statistics" / "flows.jsonl"
+FLOW_EVIDENCE = ROOT / "TEST" / "assignment-02" / "A2-T13_flow_statistics" / "flows.jsonl"
 
 
 def _documented_names(heading: str) -> set[str]:

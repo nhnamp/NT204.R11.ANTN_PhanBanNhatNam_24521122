@@ -341,7 +341,7 @@ The three stages after the parser add nine fields. They are always present, in t
 
 The raw value always stays in its base field. For example, `application.target` keeps `/a/%2e%2e/b` and the item `http.target` holds `/a/../b`.
 
-This item comes from packet 1 of `TEST/A2-T01_http_url_decode/output.jsonl`. The raw target there is `/search?q=%27%20OR%201%3D1`.
+This item comes from packet 1 of `TEST/assignment-02/A2-T01_http_url_decode/output.jsonl`. The raw target there is `/search?q=%27%20OR%201%3D1`.
 
 ```json
 {"field": "http.target", "methods": ["form"], "value": "/search?q=' OR 1=1", "status": "ok", "reason": null}
@@ -389,14 +389,14 @@ The flow tracker writes one record for each flow to the flows file (`--flows-out
 
 ### Example
 
-This event comes from `TEST/TC-04_http_get/output.jsonl`. The file holds it on one line. It is formatted here for reading. `payload_preview` and `payload_hex` are shortened.
+This event comes from `TEST/assignment-01/TC-04_http_get/output.jsonl`. The file holds it on one line. It is formatted here for reading. `payload_preview` and `payload_hex` are shortened.
 
 ```json
 {
   "packet_id": 1,
   "timestamp": 1758441600.0,
   "timestamp_iso": "2025-09-21T08:00:00+00:00",
-  "source": "pcap:TEST/TC-04_http_get/input.pcap",
+  "source": "pcap:TEST/assignment-01/TC-04_http_get/input.pcap",
   "length": 137,
   "link_type": "Ethernet",
   "network": {"protocol": "IPv4", "src_ip": "10.0.0.1", "dst_ip": "10.0.0.2", "version": 4,
@@ -437,7 +437,7 @@ This event comes from `TEST/TC-04_http_get/output.jsonl`. The file holds it on o
 }
 ```
 
-The flow record below comes from `TEST/A2-T13_flow_statistics/flows.jsonl`. It is one line in the file.
+The flow record below comes from `TEST/assignment-02/A2-T13_flow_statistics/flows.jsonl`. It is one line in the file.
 
 ```json
 {
@@ -497,25 +497,25 @@ The hint decides the protocol only when the payload is empty, for example on a S
 
 ### Detection on non-standard ports
 
-The bonus cases in `TEST/` prove the detector on ports outside the hint table, and against misleading ports. Each case was also opened in Wireshark with its default settings.
+The bonus cases in `TEST/assignment-01/` prove the detector on ports outside the hint table, and against misleading ports. Each case was also opened in Wireshark with its default settings.
 
 | Case | Traffic | Wireshark (default settings) | This parser |
 |---|---|---|---|
-| [BONUS-01](TEST/BONUS-01_http_nonstandard_port/) | HTTP on 8080 | HTTP | HTTP, `port+payload` |
-| [BONUS-01](TEST/BONUS-01_http_nonstandard_port/) | HTTP on 3000 | TCP only | HTTP, `payload` |
-| [BONUS-02](TEST/BONUS-02_dns_nonstandard_port/) | DNS over UDP on 1053 | DNS | DNS, `payload` |
-| [BONUS-02](TEST/BONUS-02_dns_nonstandard_port/) | DNS over TCP on 9053 | TCP only | DNS, `payload` |
-| [BONUS-03](TEST/BONUS-03_smtp_nonstandard_port/) | SMTP on 2526 | TCP only | SMTP, `payload` |
-| [BONUS-04](TEST/BONUS-04_detection_traps/) | Random bytes on TCP 80 | TCP | `UNKNOWN` |
-| [BONUS-04](TEST/BONUS-04_detection_traps/) | Random bytes on UDP 53 | DNS | `UNKNOWN` |
-| [BONUS-04](TEST/BONUS-04_detection_traps/) | Random bytes on TCP 25 | SMTP | `UNKNOWN` |
-| [BONUS-04](TEST/BONUS-04_detection_traps/) | HTTP request on TCP 53 | TCP only | HTTP, `payload` |
+| [BONUS-01](TEST/assignment-01/BONUS-01_http_nonstandard_port/) | HTTP on 8080 | HTTP | HTTP, `port+payload` |
+| [BONUS-01](TEST/assignment-01/BONUS-01_http_nonstandard_port/) | HTTP on 3000 | TCP only | HTTP, `payload` |
+| [BONUS-02](TEST/assignment-01/BONUS-02_dns_nonstandard_port/) | DNS over UDP on 1053 | DNS | DNS, `payload` |
+| [BONUS-02](TEST/assignment-01/BONUS-02_dns_nonstandard_port/) | DNS over TCP on 9053 | TCP only | DNS, `payload` |
+| [BONUS-03](TEST/assignment-01/BONUS-03_smtp_nonstandard_port/) | SMTP on 2526 | TCP only | SMTP, `payload` |
+| [BONUS-04](TEST/assignment-01/BONUS-04_detection_traps/) | Random bytes on TCP 80 | TCP | `UNKNOWN` |
+| [BONUS-04](TEST/assignment-01/BONUS-04_detection_traps/) | Random bytes on UDP 53 | DNS | `UNKNOWN` |
+| [BONUS-04](TEST/assignment-01/BONUS-04_detection_traps/) | Random bytes on TCP 25 | SMTP | `UNKNOWN` |
+| [BONUS-04](TEST/assignment-01/BONUS-04_detection_traps/) | HTTP request on TCP 53 | TCP only | HTTP, `payload` |
 
 The parser gives the correct protocol in all 9 cases. Wireshark relies on its port table in several of them, so it misses traffic on an unexpected port and labels random bytes by the port.
 
 ## 7. Error handling
 
-The program never stops on a bad packet or a bad input line (`ERR-1`). The test case [TC-12](TEST/TC-12_malformed_packet/) runs a corpus of 20 kinds of bad packet, and a fuzz test mutates every fixture packet 200 times. The test case [T14](TEST/A2-T14_malformed_event/) runs bad event lines. A second corpus of 37 bad records and a second fuzz test run through the three stages of the enrichment.
+The program never stops on a bad packet or a bad input line (`ERR-1`). The test case [TC-12](TEST/assignment-01/TC-12_malformed_packet/) runs a corpus of 20 kinds of bad packet, and a fuzz test mutates every fixture packet 200 times. The test case [T14](TEST/assignment-02/A2-T14_malformed_event/) runs bad event lines. A second corpus of 37 bad records and a second fuzz test run through the three stages of the enrichment.
 
 ### Stage contract
 
@@ -614,42 +614,42 @@ The script writes every fixture with fixed times and fixed random seeds, so the 
 
 ### Test cases
 
-The graded evidence is in [`TEST/`](TEST/). Each case has a folder with the input, the output, the console summary, and a README that states the purpose, the command, the expected result, the actual result, and the verdict. The case README also records the comparison with Wireshark. The commit of each case is in the index of [`TEST/README.md`](TEST/README.md).
+The graded evidence is in [`TEST/`](TEST/). Each assignment has its own folder: `TEST/assignment-01/`, `TEST/assignment-02/`, and `TEST/assignment-03/`. Each case has a folder with the input, the output, the console summary, and a README that states the purpose, the command, the expected result, the actual result, and the verdict. The case README also records the comparison with Wireshark. The commit of each case is in the index of [`TEST/README.md`](TEST/README.md).
 
-The cases T01 to T14 test the three stages. Their folder names start with `A2-`, for example `TEST/A2-T07_tcp_handshake/`. A case that checks flows also holds the flow records. The cases TC-01 to BONUS-04 ran again with the three stages. Their READMEs have a retest section.
+The cases T01 to T14 test the three stages. Their folder names start with `A2-`, for example `TEST/assignment-02/A2-T07_tcp_handshake/`. A case that checks flows also holds the flow records. The cases TC-01 to BONUS-04 ran again with the three stages. Their READMEs have a retest section.
 
 | ID | Case | Result |
 |---|---|---|
-| [TC-01](TEST/TC-01_tcp_handshake/) | TCP handshake: SYN, SYN/ACK, ACK | PASS |
-| [TC-02](TEST/TC-02_tcp_data/) | TCP packet with a payload | PASS |
-| [TC-03](TEST/TC-03_udp/) | UDP packet | PASS |
-| [TC-04](TEST/TC-04_http_get/) | HTTP GET request | PASS |
-| [TC-05](TEST/TC-05_http_post/) | HTTP POST request with a body | PASS |
-| [TC-06](TEST/TC-06_http_response/) | HTTP response: status code and headers | PASS |
-| [TC-07](TEST/TC-07_dns_query/) | DNS query: domain and query type | PASS |
-| [TC-08](TEST/TC-08_dns_response/) | DNS response with one answer | PASS |
-| [TC-09](TEST/TC-09_smtp_command/) | SMTP commands: EHLO, MAIL FROM, RCPT TO | PASS |
-| [TC-10](TEST/TC-10_smtp_response/) | SMTP responses, including a multi-line reply | PASS |
-| [TC-11](TEST/TC-11_unknown_protocol/) | Unknown protocols, with `keep` and `drop` | PASS |
-| [TC-12](TEST/TC-12_malformed_packet/) | Malformed packets: the 20-item corpus | PASS |
-| [BONUS-01](TEST/BONUS-01_http_nonstandard_port/) | HTTP on a non-standard port | PASS |
-| [BONUS-02](TEST/BONUS-02_dns_nonstandard_port/) | DNS on a non-standard port | PASS |
-| [BONUS-03](TEST/BONUS-03_smtp_nonstandard_port/) | SMTP on a non-standard port | PASS |
-| [BONUS-04](TEST/BONUS-04_detection_traps/) | Detection traps | PASS |
-| [T01](TEST/A2-T01_http_url_decode/) | HTTP URL decode: percent, plus sign, invalid escape | PASS |
-| [T02](TEST/A2-T02_html_entity/) | HTML entity decode | PASS |
-| [T03](TEST/A2-T03_smtp_mime/) | SMTP MIME decode: Base64 and Quoted-Printable | PASS |
-| [T04](TEST/A2-T04_invalid_bytes/) | Invalid UTF-8 and binary payloads | PASS |
-| [T05](TEST/A2-T05_normalization/) | Normalization of case, address, and time | PASS |
-| [T06](TEST/A2-T06_missing_field/) | Event with missing fields | PASS |
-| [T07](TEST/A2-T07_tcp_handshake/) | TCP handshake as one flow | PASS |
-| [T08](TEST/A2-T08_bidirectional_flow/) | Bidirectional flow | PASS |
-| [T09](TEST/A2-T09_tcp_close/) | TCP close by FIN and by RST | PASS |
-| [T10](TEST/A2-T10_udp_flow/) | UDP query and response as one flow | PASS |
-| [T11](TEST/A2-T11_concurrent_flows/) | Concurrent flows | PASS |
-| [T12](TEST/A2-T12_idle_timeout/) | Idle timeout | PASS |
-| [T13](TEST/A2-T13_flow_statistics/) | Flow statistics | PASS |
-| [T14](TEST/A2-T14_malformed_event/) | Malformed and unsupported events, with `keep` and `drop` | PASS |
+| [TC-01](TEST/assignment-01/TC-01_tcp_handshake/) | TCP handshake: SYN, SYN/ACK, ACK | PASS |
+| [TC-02](TEST/assignment-01/TC-02_tcp_data/) | TCP packet with a payload | PASS |
+| [TC-03](TEST/assignment-01/TC-03_udp/) | UDP packet | PASS |
+| [TC-04](TEST/assignment-01/TC-04_http_get/) | HTTP GET request | PASS |
+| [TC-05](TEST/assignment-01/TC-05_http_post/) | HTTP POST request with a body | PASS |
+| [TC-06](TEST/assignment-01/TC-06_http_response/) | HTTP response: status code and headers | PASS |
+| [TC-07](TEST/assignment-01/TC-07_dns_query/) | DNS query: domain and query type | PASS |
+| [TC-08](TEST/assignment-01/TC-08_dns_response/) | DNS response with one answer | PASS |
+| [TC-09](TEST/assignment-01/TC-09_smtp_command/) | SMTP commands: EHLO, MAIL FROM, RCPT TO | PASS |
+| [TC-10](TEST/assignment-01/TC-10_smtp_response/) | SMTP responses, including a multi-line reply | PASS |
+| [TC-11](TEST/assignment-01/TC-11_unknown_protocol/) | Unknown protocols, with `keep` and `drop` | PASS |
+| [TC-12](TEST/assignment-01/TC-12_malformed_packet/) | Malformed packets: the 20-item corpus | PASS |
+| [BONUS-01](TEST/assignment-01/BONUS-01_http_nonstandard_port/) | HTTP on a non-standard port | PASS |
+| [BONUS-02](TEST/assignment-01/BONUS-02_dns_nonstandard_port/) | DNS on a non-standard port | PASS |
+| [BONUS-03](TEST/assignment-01/BONUS-03_smtp_nonstandard_port/) | SMTP on a non-standard port | PASS |
+| [BONUS-04](TEST/assignment-01/BONUS-04_detection_traps/) | Detection traps | PASS |
+| [T01](TEST/assignment-02/A2-T01_http_url_decode/) | HTTP URL decode: percent, plus sign, invalid escape | PASS |
+| [T02](TEST/assignment-02/A2-T02_html_entity/) | HTML entity decode | PASS |
+| [T03](TEST/assignment-02/A2-T03_smtp_mime/) | SMTP MIME decode: Base64 and Quoted-Printable | PASS |
+| [T04](TEST/assignment-02/A2-T04_invalid_bytes/) | Invalid UTF-8 and binary payloads | PASS |
+| [T05](TEST/assignment-02/A2-T05_normalization/) | Normalization of case, address, and time | PASS |
+| [T06](TEST/assignment-02/A2-T06_missing_field/) | Event with missing fields | PASS |
+| [T07](TEST/assignment-02/A2-T07_tcp_handshake/) | TCP handshake as one flow | PASS |
+| [T08](TEST/assignment-02/A2-T08_bidirectional_flow/) | Bidirectional flow | PASS |
+| [T09](TEST/assignment-02/A2-T09_tcp_close/) | TCP close by FIN and by RST | PASS |
+| [T10](TEST/assignment-02/A2-T10_udp_flow/) | UDP query and response as one flow | PASS |
+| [T11](TEST/assignment-02/A2-T11_concurrent_flows/) | Concurrent flows | PASS |
+| [T12](TEST/assignment-02/A2-T12_idle_timeout/) | Idle timeout | PASS |
+| [T13](TEST/assignment-02/A2-T13_flow_statistics/) | Flow statistics | PASS |
+| [T14](TEST/assignment-02/A2-T14_malformed_event/) | Malformed and unsupported events, with `keep` and `drop` | PASS |
 
 To check the evidence, run the command in each case README and compare the new output with the committed `output.jsonl`. For a case that checks flows, compare `flows.jsonl` too. Only the `source` field can differ. Do not compare `console.txt`, because its elapsed time changes on every run. The script `tests/check_evidence_compat.py` reruns every input and compares the base fields of the committed outputs.
 

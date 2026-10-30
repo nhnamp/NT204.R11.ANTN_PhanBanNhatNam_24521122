@@ -115,7 +115,7 @@ def main() -> int:
     checked = 0
     with tempfile.TemporaryDirectory() as temporary:
         output, flows = Path(temporary) / "output.jsonl", Path(temporary) / "flows.jsonl"
-        for folder in sorted(path for path in TEST_DIR.iterdir() if path.is_dir()):
+        for folder in sorted(path for path in TEST_DIR.glob("assignment-*/*") if path.is_dir()):
             try:
                 checked += _check_folder(folder, output, flows)
             except Difference as exc:
