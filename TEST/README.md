@@ -43,6 +43,7 @@ This directory holds the graded evidence. Each assignment has its own folder: `a
 | A3-T05 | Rule direction | [`A3-T05_direction`](assignment-03/A3-T05_direction/) | `python main.py --pcap TEST/assignment-03/A3-T05_direction/input/traffic.pcap --rules-config TEST/assignment-03/A3-T05_direction/input/rules.toml`, with the four output options (see the case README) | PASS |  |
 | A3-T06 | Rule index | [`A3-T06_rule_index`](assignment-03/A3-T06_rule_index/) | `python main.py --pcap TEST/assignment-03/A3-T06_rule_index/input/traffic.pcap --rules-config TEST/assignment-03/A3-T06_rule_index/input/rules.toml`, with the four output options (see the case README) | PASS |  |
 | A3-T07 | Header mismatch | [`A3-T07_header_mismatch`](assignment-03/A3-T07_header_mismatch/) | `python main.py --pcap TEST/assignment-03/A3-T07_header_mismatch/input/traffic.pcap --rules-config TEST/assignment-03/A3-T07_header_mismatch/input/rules.toml`, with the four output options (see the case README) | PASS |  |
+| A3-T08 | Flow to_server, established | [`A3-T08_flow_established`](assignment-03/A3-T08_flow_established/) | `python main.py --pcap TEST/assignment-03/A3-T08_flow_established/input/traffic.pcap --rules-config TEST/assignment-03/A3-T08_flow_established/input/rules.toml`, with the four output options (see the case README) | PASS |  |
 
 Add one row per test case when the case passes. Fill the commit column in a later commit, because a commit cannot hold its own hash. A retest adds its commit after the word "retest". The last hash in a row is the commit of the current evidence.
 

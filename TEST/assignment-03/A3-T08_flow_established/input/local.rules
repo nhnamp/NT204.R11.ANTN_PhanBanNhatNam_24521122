@@ -1,0 +1,2 @@
+# Case 08: one rule. dsize:>0 keeps the empty ACK of the handshake out of the match.
+alert tcp any any <> any 80 (msg:"Client data on an established flow"; flow:to_server,established; dsize:>0; sid:100801; rev:1;)
