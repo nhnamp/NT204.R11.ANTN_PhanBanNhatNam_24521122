@@ -1,0 +1,5 @@
+# Paths are relative to the folder of this config file.
+
+[[rule_files]]
+path = "local.rules"
+enabled = true

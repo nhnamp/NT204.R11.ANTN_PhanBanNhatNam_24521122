@@ -1,0 +1,5 @@
+# Case 11: the payload is "id=1&id=22&name=bob". The first "id=" is a wrong anchor for "22".
+alert tcp any any -> any 80 (msg:"22 right after the second id="; content:"id="; content:"22"; distance:0; within:2; sid:101101; rev:1;)
+alert tcp any any -> any 80 (msg:"bob too far after id="; content:"id="; content:"bob"; distance:0; within:3; sid:101102; rev:1;)
+alert tcp any any -> any 80 (msg:"name 1 byte after 22"; content:"22"; content:"name"; distance:1; within:4; sid:101103; rev:1;)
+alert tcp any any -> any 80 (msg:"name 2 bytes after 22"; content:"22"; content:"name"; distance:2; within:4; sid:101104; rev:1;)
