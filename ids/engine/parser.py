@@ -49,6 +49,8 @@ def _parse(origin: str, text: str) -> Rule:
         raise _invalid("a rule needs a header and options in parentheses")
     header = _parse_header(text[:start].split())
     options = _parse_options(text[start + 1 : -1])
+    if header["protocol"] == "udp" and "flags" in options:
+        raise _invalid("flags needs a tcp rule")
     return Rule(
         action="alert",
         protocol=header["protocol"],

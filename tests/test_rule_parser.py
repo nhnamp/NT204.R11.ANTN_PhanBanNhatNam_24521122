@@ -120,6 +120,13 @@ def test_invalid_options(body):
     assert parsed.status == "invalid" and parsed.reason and parsed.rule is None
 
 
+def test_flags_on_a_udp_rule_is_invalid():
+    parsed = parse("alert udp any any -> any 53", 'msg:"x"; flags:S; sid:1;')
+
+    assert (parsed.status, parsed.reason) == ("invalid", "flags needs a tcp rule")
+    assert rule_of("alert ip any any -> any any", 'msg:"x"; flags:S; sid:1;').flags is not None
+
+
 @pytest.mark.parametrize(
     "body",
     [
