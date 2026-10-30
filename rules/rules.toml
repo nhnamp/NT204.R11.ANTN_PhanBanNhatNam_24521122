@@ -1,0 +1,13 @@
+# Paths are relative to the folder of this config file.
+
+# Disable one rule by sid. Rule 100008 is too noisy for the demo.
+disabled_sids = [100008]
+
+[[rule_files]]
+path = "local.rules"
+enabled = true
+
+# Disable a whole file. The loader does not read it.
+[[rule_files]]
+path = "experimental.rules"
+enabled = false
