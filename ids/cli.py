@@ -186,7 +186,7 @@ def run(config: Config) -> int:
                 match_writer = engine_files.enter_context(JsonLinesWriter(config.matches_output))
                 with JsonLinesWriter(config.rules_report) as report_writer:
                     for entry in engine.report:
-                        report_writer.write(_report_line(entry))
+                        report_writer.write(entry.to_dict())
             try:
                 for item in source:
                     read += 1
@@ -197,7 +197,7 @@ def run(config: Config) -> int:
                     flows_written += _write_flows(flow_writer, exported)
                     if match_writer is not None and output is not None:
                         _write_matches(engine.evaluator, enricher, output, match_writer)
-                    result =_write_record(writer, output) if output is not None else None
+                    result = _write_record(writer, output) if output is not None else None
                     if result is None:
                         dropped += 1
                     else:
@@ -229,8 +229,8 @@ def run(config: Config) -> int:
         *[f"preprocess {status}: {count}" for status, count in preprocess_counts.items()],
         f"dropped: {dropped}",
         f"flows written: {flows_written}",
-        f"elapsed: {elapsed:.3f}s",
         *(_engine_summary(engine) if engine is not None else []),
+        f"elapsed: {elapsed:.3f}s",
         sep="\n",
         file=sys.stderr,
     )
@@ -262,10 +262,6 @@ def _load_engine(config: Config) -> _Engine:
             file=sys.stderr,
         )
     return _Engine(Evaluator(repository), report, loaded)
-
-
-def _report_line(entry: ParsedRule) -> dict:
-    return {key: value for key, value in entry.to_dict().items() if key != "text"}
 
 
 def _write_matches(evaluator: Evaluator, enricher: Enricher, output: dict, writer: JsonLinesWriter) -> None:

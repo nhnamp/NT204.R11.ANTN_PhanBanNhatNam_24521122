@@ -40,6 +40,7 @@ def test_a_run_writes_the_matches_the_report_and_the_summary(tmp_path, capsys):
     assert [(item["line"], item["status"]) for item in report] == [
         (2, "valid"), (3, "valid"), (4, "invalid"), (5, "unsupported"), (6, "disabled"),
     ]
+    assert report[2]["text"].endswith("(msg:\"same sid\"; sid:1;)")
     assert report[2]["reason"] == "duplicate sid 1" and report[2]["rule"] is None
     err = capsys.readouterr().err
     assert "a.rules:4: invalid: duplicate sid 1" in err
