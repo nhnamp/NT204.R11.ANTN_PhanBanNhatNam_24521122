@@ -6,6 +6,8 @@ Assignment 01 builds the **packet capture and parser module**. The module reads 
 
 Assignment 02 adds three stages after the parser: a **Decoder**, a **Preprocessor**, and a **Flow Tracker**. The stages decode URL-encoded and MIME-encoded values, give each event a consistent `normalized` view, and group the events into network flows. The module writes the flows to a second JSON Lines file.
 
+Assignment 03 adds the **Core Engine**. The engine reads Snort rules from `.rules` files, evaluates each enriched event against them, and writes one rule match record for each rule that matches. It reads the `normalized` view, the payload bytes, and the flow context of the Flow Tracker. It never reads a Scapy packet.
+
 ## Contents
 
 1. [Overview and scope](#1-overview-and-scope)
@@ -35,7 +37,8 @@ The module:
 - detects the application protocol from the payload, and uses the port only as a hint;
 - never stops on a malformed, truncated, or unsupported packet or record;
 - writes every event to a JSON Lines file, one event per line;
-- writes one record for each network flow to a second JSON Lines file.
+- writes one record for each network flow to a second JSON Lines file;
+- with `--rules-config`, evaluates every event against a set of Snort rules, and writes the rule matches and a rules report to two more JSON Lines files.
 
 Three stages run on every event after the parser. A stage reads the output of the earlier stages, and it reads a plain `dict`, never a Scapy packet.
 
@@ -46,6 +49,8 @@ Three stages run on every event after the parser. A stage reads the output of th
 | Flow Tracker | `normalized`, for the events with `processing_action="keep"` | `flow_id`, `direction`, and the flows file |
 
 The Decoder handles percent encoding, form encoding, HTML entities, Base64, Quoted-Printable, MIME messages, and charsets. The Preprocessor validates the record and normalizes the protocol name, the IP address, the port, the flags, the host, the path, and the time. The Flow Tracker groups TCP and UDP packets by their endpoints, follows the TCP connection state, and counts packets and bytes. The stages do not change the Assignment 01 fields. The new fields are in [section 5](#5-event-schema).
+
+The rule engine runs after the three stages. It loads the rules once at the start, and then it checks each event with `processing_action="keep"`. It supports the Snort keywords of section 3 of the Assignment 03 description (see [Supported rule keywords](#supported-rule-keywords)). It marks every other keyword `unsupported` and goes on. The engine writes to its own files, so the events file and the flows file are the same as without the engine.
 
 ## 2. Installation
 
@@ -71,6 +76,7 @@ To list the interface names on macOS, use `ifconfig -l`. On Linux, use `ip link`
 python main.py (--interface IFACE | --pcap FILE | --events FILE) [--output FILE] [--unknown {keep,drop}]
                [--count N] [--payload {preview,full}] [--payload-limit N] [--tcp-timeout SEC]
                [--udp-timeout SEC] [--max-flows N] [--flows-output FILE]
+               [--rules-config FILE] [--matches-output FILE] [--rules-report FILE]
 ```
 
 | Option | Default | Meaning |
@@ -87,8 +93,11 @@ python main.py (--interface IFACE | --pcap FILE | --events FILE) [--output FILE]
 | `--udp-timeout SEC` | `30.0` | The idle time after which a UDP flow ends. The unit is seconds of packet time. |
 | `--max-flows N` | `100000` | The largest number of active flows. When the table is full, the oldest flow leaves with `end_reason="evicted"` (see [section 9](#9-limitations)). |
 | `--flows-output FILE` | `flows.jsonl` | Write the flow records to `FILE`. The run overwrites an existing file. |
+| `--rules-config FILE` | none | Read the rule config `FILE` and turn on the rule engine. Without this option, the engine does not run and writes no file. |
+| `--matches-output FILE` | `matches.jsonl` | Write the rule match records to `FILE`, one per line. |
+| `--rules-report FILE` | `rules_report.jsonl` | Write one line for each rule line to `FILE`, with its status and reason. |
 
-`--interface`, `--pcap`, and `--events` are mutually exclusive, and one of them is required. `--output` and `--flows-output` must name two files, and neither can be the input file.
+`--interface`, `--pcap`, and `--events` are mutually exclusive, and one of them is required. `--output`, `--flows-output`, `--matches-output`, and `--rules-report` must name four different files, and none can be the input file. An output file cannot be one of the rule files.
 
 The idle time uses the time of the packets, not the clock of the computer. A flow is idle when the time since its last packet is larger than the timeout. A flow of exactly the timeout length stays.
 
@@ -139,24 +148,89 @@ elapsed: 0.020s
 
 `packets read` counts the lines of an events file, when the source is one. The first group of status lines counts the parser `status` of the events written, and `other` counts an event with no known `status`. The second group counts `preprocess_status`. `dropped` counts the events that `--unknown drop` removed. `flows written` counts the lines of the flows file.
 
+### Rule engine
+
+The rule config is a TOML file. It lists the rule files and turns a file or a single rule off. A path in the config is relative to the folder of the config. This is [`rules/rules.toml`](rules/rules.toml):
+
+```toml
+# Paths are relative to the folder of this config file.
+
+# Disable one rule by sid. Rule 100008 is too noisy for the demo.
+disabled_sids = [100008]
+
+[[rule_files]]
+path = "local.rules"
+enabled = true
+
+# Disable a whole file. The loader does not read it.
+[[rule_files]]
+path = "experimental.rules"
+enabled = false
+```
+
+- A rule file has one rule on each line. The loader skips blank lines and lines that start with `#`.
+- A rule file that cannot be read gives a warning, and the loader reads the other files.
+- An `invalid` or `unsupported` rule gives one warning line with its file, line, and reason. The engine goes on with the other rules.
+- A config that cannot be read or is not valid TOML stops the run with exit code 1.
+
+[`rules/local.rules`](rules/local.rules) holds eight demo rules. Each comment names the fixture packet that its rule matches. This run applies them to all fixture packets:
+
+```bash
+python main.py --pcap tests/fixtures/all.pcap --rules-config rules/rules.toml
+```
+
+The run writes `events.jsonl`, `flows.jsonl`, `matches.jsonl` (16 rule matches), and `rules_report.jsonl` (7 `valid` rules and 1 `disabled` rule). The summary gets these lines before `elapsed`:
+
+```text
+rule files disabled: 1
+rules valid: 7
+rules invalid: 0
+rules unsupported: 0
+rules disabled: 1
+records evaluated: 134
+candidate rules: 257
+rejected by header: 93
+rejected by flow: 7
+rejected by packet options: 8
+rejected by content: 133
+rule matches: 16
+engine errors: 0
+```
+
+| Line | Meaning |
+|---|---|
+| `rule files disabled` | The rule files with `enabled = false`. |
+| `rules valid`, `invalid`, `unsupported`, `disabled` | The rule lines of each status in the rules report. |
+| `records evaluated` | The events with `processing_action="keep"` that the engine checked with no error. The engine reads only these events. |
+| `candidate rules` | The sum, over all events, of the rules that the index returned. |
+| `rejected by header` / `flow` / `packet options` / `content` | The candidates that failed at each stage of the matcher. `packet options` means `flags` and `dsize`. |
+| `rule matches` | The rules that matched. Each match is one line of the rule match file. |
+| `engine errors` | The events that the engine could not check, and the rule matches that could not be written. The run goes on after each one. An event that the engine could not check adds nothing to the other counters. A match that could not be written still counts in `rule matches`. |
+
+The matcher checks the stages in the order of the table, and it stops at the first stage that fails. So `candidate rules` always equals the four `rejected by` lines plus `rule matches`. In the run above, 93 + 7 + 8 + 133 + 16 = 257.
+
 Exit codes:
 
 | Code | Meaning |
 |---|---|
 | 0 | The run finished, or Ctrl-C stopped it. Ctrl-C closes the output file and prints the summary. |
-| 1 | A file cannot be opened, live capture has no root permission, or the interface does not exist. The program prints one error line and no traceback. |
-| 2 | The command line is not valid. For example, two sources, or `--output` and `--flows-output` that name one file. |
+| 1 | A file cannot be opened, live capture has no root permission, or the interface does not exist. The rule config cannot be read or is not valid, or an output file is one of the rule files. The program prints one error line and no traceback. |
+| 2 | The command line is not valid. For example, two sources, or two output options that name one file. |
 
 ## 4. Architecture
 
-![Architecture of the IDS. Live capture and PCAP import feed Pipeline.process. The events file skips it. The Enricher runs the Decoder, the Preprocessor, and the Flow Tracker. Two writers save the events and the flows.](images/architecture.svg)
+![Architecture of the IDS. Live capture and PCAP import feed Pipeline.process. The events file skips it. The Enricher runs the Decoder, the Preprocessor, and the Flow Tracker. Two writers save the events and the flows. The rule config and the rule files feed the loader, the parser, and the rule repository once at the start. For each record, the evaluator, the matcher, and the generator write the rule matches. The parser also writes the rules report.](images/architecture.svg)
 
 The events file source skips `Pipeline.process`, because its records are already `dict` values.
+
+The Core Engine follows the pipeline of section 5 of the Assignment 03 description: Normalized Event + Flow Context, then the Evaluation Engine, the Repository/Indexer, the Matching Engine, and the Detection Event.
+
+![Core Engine. The normalized event and the flow context go to the Evaluation Engine. It asks the Repository for the candidate rules of the record. The Matching Engine checks each candidate in four stages: header, flow, packet, and content. A rule that passes every stage gives a Detection Event, which this README calls a rule match. The Loader and the Parser fill the Repository and write the rules report.](images/core_engine.svg)
 
 | Module | Role |
 |---|---|
 | `main.py` | Entry point. It parses the arguments and calls `ids.cli.run`. |
-| `ids/cli.py` | Selects the source, runs the one loop, writes the events and the flows, and prints the summary. |
+| `ids/cli.py` | Selects the source, runs the one loop, runs the rule engine when it is on, writes the output files, and prints the summary. |
 | `ids/config.py` | `Config`: the options of one run, with their defaults. |
 | `ids/contract.py` | The field names, the status values, and the error types that the three stages share. |
 | `ids/capture/base.py` | `PacketSource`: the interface that both sources implement. |
@@ -176,13 +250,21 @@ The events file source skips `Pipeline.process`, because its records are already
 | `ids/stages/decoder.py` | `decode_record`: decodes the target, the body, and the payload of a record. |
 | `ids/stages/mime.py` | Base64 and Quoted-Printable decoding, SMTP message framing, and the MIME message reader. |
 | `ids/stages/preprocessor.py` | `preprocess_record`: validates a record and builds the `normalized` object. |
-| `ids/stages/flow.py` | `FlowTracker`: the flow key, the endpoints, the TCP state machine, the counters, the timeouts, and the flow records. |
+| `ids/stages/flow.py` | `FlowTracker`: the flow key, the endpoints, the TCP state machine, the counters, the timeouts, and the flow records. `FlowContext`: the flow facts of one packet, for the rule engine. |
+| `ids/engine/model.py` | The internal rule object, the match result, and the rule match record. |
+| `ids/engine/loader.py` | Rule Loader: reads the TOML config and the enabled rule files, and yields each rule line with its file and line number. |
+| `ids/engine/parser.py` | Rule Parser & Validator: turns one rule line into a rule object, or into `invalid` or `unsupported` with a reason. It never raises. |
+| `ids/engine/repository.py` | Rule Repository / Indexer: stores the valid rules, marks duplicates and disabled rules, and returns the candidate rules of one record by protocol and port. |
+| `ids/engine/matcher.py` | Rule Matching Engine: checks one rule against one record in four stages, and returns `MATCH` or `NO_MATCH` with the stage that failed. |
+| `ids/engine/evaluator.py` | Rule Evaluation Engine: gets the candidates, calls the matcher for each one, and keeps the counters. It does not stop at the first match. |
+| `ids/engine/generator.py` | Rule match generator: builds one rule match record from a rule, a record, its flow context, and the match result. |
+| `rules/` | The demo rule config and the demo rule file. |
 
-Two design rules hold the architecture together:
+Three design rules hold the architecture together:
 
 - **One pipeline.** Live capture and PCAP import share every stage after the source. Only `cli.run` calls `Pipeline.process`.
 - **One enricher.** The three stages run inside `Enricher.process`, and only `cli.run` calls it. The stages read a `dict`, so an events file and a capture file take the same path.
-- **One library boundary.** Only `ids/capture/` and `ids/parsers/` import Scapy. An event holds JSON-compatible values only, so the detection engine never needs Scapy.
+- **One library boundary.** Only `ids/capture/` and `ids/parsers/` import Scapy. An event holds JSON-compatible values only, so the rule engine never needs Scapy.
 
 ## 5. Event schema
 
@@ -532,6 +614,35 @@ The engine writes one line for each rule line of the enabled rule files to the r
 | `unsupported` | The rule is valid Snort syntax, but it uses a keyword or a form outside the supported scope. |
 | `disabled` | The rule is valid, and its `sid` is in `disabled_sids` of the rule config. |
 
+### Supported rule keywords
+
+A rule must fit on one line. The table lists every form that the parser accepts. A form in the last column gives `unsupported`, unless the column says `invalid`.
+
+| Group | Keyword | Supported forms | Not supported |
+|---|---|---|---|
+| Header | action | `alert` | `log`, `pass`, `drop`, `reject`, `sdrop`, `activate`, `dynamic` |
+| Header | protocol | `tcp`, `udp`, and `ip`. An `ip` rule matches TCP and UDP events, and its ports must be `any`. | `icmp` |
+| Header | address | `any`, one IPv4 address, an IPv4 CIDR block | variables such as `$HOME_NET`, negation `!`, lists `[...]` |
+| Header | port | `any`, one port `80`, a range `1024:2048`, an open range `:1024` or `1024:` | variables, negation, lists |
+| Header | direction | `->` (one way), `<>` (both ways) | `<-` is `invalid` |
+| Identification | `msg`, `sid`, `rev` | `msg` and `sid` are required. `rev` is 1 when the rule does not give it. | a `sid` of an earlier rule is `invalid` |
+| Content | `content` | a quoted string, hex bytes such as `\|3A\|`, the escapes `\"`, `\;`, and `\\` | negated content `!"..."` |
+| Content | `nocase`, `offset`, `depth` | modifiers of the content before them | `offset` or `depth` with `distance` or `within` on one content is `invalid` |
+| Content | `distance`, `within` | modifiers relative to the end of the previous content match. `distance` can be negative. | — |
+| Packet | `flags` | the letters `FSRPAUCE`, or `0` for no flag, with the modifier `+`, `*`, or `!`. A `udp` rule with `flags` is `invalid`. | the mask form `flags:S,12`, the legacy flags `1` and `2` |
+| Packet | `dsize` | `N`, `>N`, `<N`, and `N<>M`, which includes both limits | — |
+| Flow | `flow` | `to_server`, `to_client`, `established`, `not_established` | other values, such as `stateless` or `from_client` |
+| Classification | `classtype`, `priority` | a name, and a number | — |
+| Other | any other keyword | — | `pcre`, `byte_test`, `byte_jump`, `http_uri`, and the rest |
+
+The matcher reads these values:
+
+- **Content** searches the raw payload bytes in `payload_hex`. It does not search the decoded or normalized values.
+- **`dsize`** reads `normalized.payload_len`, the true payload length.
+- **`flags`** reads `normalized.tcp_flags`. `flags:S` matches a packet with SYN alone. `+` allows more flags, `*` needs any of the flags, and `!` needs none of them.
+- **`to_server`** means the `forward` direction of the flow, from the client to the server. `to_client` means `backward`.
+- **`established`** for TCP means the flow state after the packet is `ESTABLISHED` or `CLOSING`. For UDP, it means that the flow has packets in both directions.
+
 ### Rule engine examples
 
 This rule match record comes from `TEST/assignment-03/A3-T14_match_record/output/matches.jsonl`. It is one line in the file. It shows the example of section 5 of the description.
@@ -727,7 +838,7 @@ Run the unit tests:
 pytest
 ```
 
-The suite has 867 tests. It covers every parser, the detector, the pipeline, the CLI, the bad-input corpus, the non-standard ports, and a seeded fuzz test. The tests of the three stages cover the Decoder and the MIME reader, the Preprocessor, the TCP state machine, the flow tracker, the events file reader, and the enrichment options. A second corpus of 37 bad records, a second seeded fuzz test, and a check of the schema tables in this README complete the suite.
+The suite has 1003 tests. It covers every parser, the detector, the pipeline, the CLI, the bad-input corpus, the non-standard ports, and a seeded fuzz test. The tests of the three stages cover the Decoder and the MIME reader, the Preprocessor, the TCP state machine, the flow tracker, the events file reader, and the enrichment options. A second corpus of 37 bad records, a second seeded fuzz test, and a check of the schema tables in this README complete the suite. The tests of the rule engine cover the flow context, the loader, the parser, the repository, the matcher, the evaluator, the rule match record, and the engine options of the CLI.
 
 The fixtures in `tests/fixtures/` are generated. Regenerate them with one command:
 
@@ -741,7 +852,11 @@ The script writes every fixture with fixed times and fixed random seeds, so the 
 
 The graded evidence is in [`TEST/`](TEST/). Each assignment has its own folder: `TEST/assignment-01/`, `TEST/assignment-02/`, and `TEST/assignment-03/`. Each case has a folder with the input, the output, the console summary, and a README that states the purpose, the command, the expected result, the actual result, and the verdict. The case README also records the comparison with Wireshark. The commit of each case is in the index of [`TEST/README.md`](TEST/README.md).
 
-The cases T01 to T14 test the three stages. Their folder names start with `A2-`, for example `TEST/assignment-02/A2-T07_tcp_handshake/`. A case that checks flows also holds the flow records. The cases TC-01 to BONUS-04 ran again with the three stages. Their READMEs have a retest section.
+The description of Assignment 03 puts its test results in `TEST/BT3`. This repository keeps them in `TEST/assignment-03/`, next to the evidence of the other assignments.
+
+The cases T01 to T14 of Assignment 02 test the three stages. Their folder names start with `A2-`, for example `TEST/assignment-02/A2-T07_tcp_handshake/`. A case that checks flows also holds the flow records. The cases TC-01 to BONUS-04 ran again with the three stages. Their READMEs have a retest section.
+
+The cases A3-T01 to A3-T14 test the rule engine. Case A3-T*nn* is test case *nn* of section 6 of the Assignment 03 description. Each case holds `input/` (the pcap, `local.rules`, and `rules.toml`) and `output/` (the events, the flows, the rule matches, and the rules report). The rule engine does not change the events and the flows, so the Assignment 01 and 02 cases need no retest.
 
 | ID | Case | Result |
 |---|---|---|
@@ -775,8 +890,22 @@ The cases T01 to T14 test the three stages. Their folder names start with `A2-`,
 | [T12](TEST/assignment-02/A2-T12_idle_timeout/) | Idle timeout | PASS |
 | [T13](TEST/assignment-02/A2-T13_flow_statistics/) | Flow statistics | PASS |
 | [T14](TEST/assignment-02/A2-T14_malformed_event/) | Malformed and unsupported events, with `keep` and `drop` | PASS |
+| [A3-T01](TEST/assignment-03/A3-T01_rule_file_comments/) | Rule file with valid rules, comments, and blank lines | PASS |
+| [A3-T02](TEST/assignment-03/A3-T02_invalid_rule/) | Invalid rule: marked `invalid` with a reason, the engine goes on | PASS |
+| [A3-T03](TEST/assignment-03/A3-T03_unsupported_keyword/) | Out-of-scope keyword: marked `unsupported`, no crash | PASS |
+| [A3-T04](TEST/assignment-03/A3-T04_rule_header/) | Rule header: `any`, one IP, CIDR, one port, port range | PASS |
+| [A3-T05](TEST/assignment-03/A3-T05_direction/) | Direction `->` and `<>` | PASS |
+| [A3-T06](TEST/assignment-03/A3-T06_rule_index/) | Indexer with IP, TCP, UDP, and `any` | PASS |
+| [A3-T07](TEST/assignment-03/A3-T07_header_mismatch/) | Header mismatch: the rule stops before content matching | PASS |
+| [A3-T08](TEST/assignment-03/A3-T08_flow_established/) | `flow:to_server,established` | PASS |
+| [A3-T09](TEST/assignment-03/A3-T09_content_nocase/) | `content` with and without `nocase` | PASS |
+| [A3-T10](TEST/assignment-03/A3-T10_offset_depth/) | `offset` and `depth` | PASS |
+| [A3-T11](TEST/assignment-03/A3-T11_distance_within/) | Two contents with `distance` and `within` | PASS |
+| [A3-T12](TEST/assignment-03/A3-T12_flags_dsize/) | `flags` and `dsize` | PASS |
+| [A3-T13](TEST/assignment-03/A3-T13_multiple_matches/) | One event matches two or more rules | PASS |
+| [A3-T14](TEST/assignment-03/A3-T14_match_record/) | Rule match record with every required field | PASS |
 
-To check the evidence, run the command in each case README and compare the new output with the committed `output.jsonl`. For a case that checks flows, compare `flows.jsonl` too. Only the `source` field can differ. Do not compare `console.txt`, because its elapsed time changes on every run. The script `tests/check_evidence_compat.py` reruns every input and compares the base fields of the committed outputs.
+To check the evidence, run the command in each case README and compare the new output with the committed `output.jsonl`. For a case that checks flows, compare `flows.jsonl` too. Only the `source` field can differ. Do not compare `console.txt`, because its elapsed time changes on every run. The script `tests/check_evidence_compat.py` reruns every input of `assignment-01/` and `assignment-02/` and compares the base fields of the committed outputs. For an Assignment 03 case, run the command in its `console.txt` and compare the four files of `output/` with the committed ones. A run from the repository root gives the same four files, byte for byte.
 
 ## 9. Limitations
 
@@ -816,6 +945,19 @@ To check the evidence, run the command in each case README and compare the new o
 - **Late packets and expiry order.** A packet that is older than the newest packet updates its flow in place. Expiry and eviction read only the front of each table. A flow can therefore leave later than its timeout, and eviction can pick a flow that is not the oldest. No flow is lost, because the end of the run exports every flow.
 - **Clock jump.** One far-future timestamp (below year 2100) moves the clock for the rest of the run. Every flow that is active at that moment ends with `idle_timeout`. Flows of the other protocol then expire at their next packet, so a TCP flow of N packets becomes N flows. Flows of the same protocol stay behind the future flow and end only at the end of the run. The run does not stop.
 - **Ctrl-C at the wrong instant.** Two windows, each a few instructions wide, can break the flows file. A `KeyboardInterrupt` after the tracker returned its flows and before the writer wrote them loses those flows. A `KeyboardInterrupt` inside the tracker, after it listed the flows that leave and before it removed them from the table, exports a flow twice: the flows file then holds the same `flow_id` two times.
+
+### Core Engine
+
+- **Capture that starts in the middle.** A TCP flow that starts in the middle of a connection begins as `ESTABLISHED`, so `flow:established` matches its first packet.
+- **Client guess.** Without a SYN, the Flow Tracker takes the sender of the first packet as the client. In a capture that starts with a server banner, such as SMTP, `to_server` then points at the real client.
+- **State after the packet.** `established` reads the flow state after the packet. The final ACK of the handshake counts as established. A FIN packet also counts, because it gives `CLOSING`. A RST packet does not count, because it gives `RESET`.
+- **One packet at a time.** Content matching sees one packet. A pattern split over two TCP segments does not match.
+- **Raw payload only.** Content matching does not read the decoded or normalized values. A rule for `../` does not match `%2e%2e%2f` unless it searches for the encoded text.
+- **Cost of relative contents.** The relative content search keeps a set of failed positions, so its cost is polynomial, not exponential. A crafted 4 096-byte payload against a rule with 3 to 6 relative contents still costs about 0.7 to 2.6 s for each packet.
+- **Cut payload.** With `--payload preview`, or with `--payload-limit` below the payload size, content matching sees only the stored bytes. `dsize` still uses the true payload length. The run prints a warning for `--payload preview`.
+- **Rule syntax.** The engine does not support variables, negation, lists, multi-line rules, or the Snort 3 syntax. Each of them gives `unsupported`.
+- **Counters.** `rule matches` counts the matches that the engine found. A match that cannot be written also counts there, and in `engine errors`.
+- **Output files.** Every run with `--rules-config` overwrites the rule match file and the rules report.
 
 ## 10. AI usage disclosure
 
@@ -858,3 +1000,21 @@ Typical contributions:
 | Test | One test compares the schema tables of this README with the field names of the contract. Six deliberate changes to the README all made it fail. |
 | Test | A corpus of 37 bad records and a seeded fuzz test run through the three stages. |
 | Test | `tests/check_evidence_compat.py` reruns the committed evidence and compares the base fields. |
+
+### Assignment 03
+
+Claude Opus 5.5 wrote the schedule, split it into tasks, reviewed every branch, and wrote the Assignment 03 parts of this README and the two diagrams. Claude Sonnet 5.5 wrote the engine code, the unit tests, the fixtures, and the 14 test cases in `TEST/assignment-03/`, each in its own branch. The owner accepted the design decisions.
+
+Typical contributions:
+
+| Kind | Contribution |
+|---|---|
+| Decision | The record is called a rule match, not a Detection Event, because `detection` already names the application protocol detection. |
+| Decision | The Flow Tracker gives a read-only `FlowContext`. The event record gets no new field, so the Assignment 01 and 02 evidence needs no retest. |
+| Decision | Every candidate rule is checked. The evaluator does not stop at the first match. |
+| Review finding | A `flags` option on a `udp` rule was `valid`, and it could never match. The parser now marks it `invalid`. |
+| Review finding | The relative content search backtracked without a limit. Four contents on 800 bytes took 14 s for one packet. The search now remembers the positions that failed. |
+| Review finding | The rules report did not keep the rule text, so the report alone could not show which rule got each status. The report now has `text`. |
+| Review finding | An output option could name one of the rule files, and the run then emptied that file. The run now stops with exit code 1 before it opens a writer. |
+| Review finding | The demo rule 100001 searches for an encoded `%2e%2e`, but its message did not say that the text is encoded. The message now says "Encoded directory traversal in HTTP request". |
+| Review finding | `tests/check_evidence_compat.py` read every folder in `TEST/`, so the new Assignment 03 folders would break it. Its glob now covers only Assignments 01 and 02. |

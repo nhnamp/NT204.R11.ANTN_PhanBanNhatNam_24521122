@@ -2,6 +2,8 @@
 
 This directory holds the graded evidence. Each assignment has its own folder: `assignment-01/`, `assignment-02/`, and `assignment-03/`. One test case owns one folder in the folder of its assignment.
 
+The description of Assignment 03 puts its test results in `TEST/BT3`. This repository keeps them in `assignment-03/`, with the same layout as the other assignments. Case A3-T*nn* is test case *nn* of section 6 of that description.
+
 ## Index
 
 | ID | Name | Folder | Command | Result | Commit |
@@ -59,7 +61,7 @@ Use the test case ID and a short name: `TC-01_tcp_handshake`, `TC-12_malformed_p
 
 ## Console summary format
 
-`console.txt` shows the summary of the program at the last commit of the folder. Every folder now holds the summary of Assignment 02: it counts the parse statuses (`ok`, `partial`, `unsupported`, `malformed`, `other`), the preprocess statuses, the dropped events, and the flow records. The script `tests/check_evidence_compat.py` guards every folder: it reruns each input and compares the base fields of the output files with the committed ones. It does not check `console.txt`.
+`console.txt` shows the summary of the program at the last commit of the folder. Every folder of `assignment-01/` and `assignment-02/` holds the summary of Assignment 02: it counts the parse statuses (`ok`, `partial`, `unsupported`, `malformed`, `other`), the preprocess statuses, the dropped events, and the flow records. The script `tests/check_evidence_compat.py` guards every folder: it reruns each input and compares the base fields of the output files with the committed ones. It does not check `console.txt`. An `assignment-03/` folder also holds the rule engine counters, the command on the first line, and the exit code on the last line. The guard script does not read these folders. Rerun the command of `console.txt` from the repository root and compare `output/`.
 
 ## Folder contents
 
